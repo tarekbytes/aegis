@@ -9,4 +9,4 @@ class QueryVulnerabilities(BaseModel):
     vulns: List[OSVAbbreviatedVulnerability] = Field(default_factory=list)
 
 class OSVBatchResponse(BaseModel):
-    results: List[QueryVulnerabilities] 
+    results: List[QueryVulnerabilities]

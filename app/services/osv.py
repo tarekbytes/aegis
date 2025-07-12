@@ -60,4 +60,4 @@ async def query_osv_batch(requirements: List[Requirement]) -> OSVBatchResponse:
     async with httpx.AsyncClient() as client:
         response = await client.post(OSV_API_URL, json={"queries": queries})
         response.raise_for_status()
-        return OSVBatchResponse.parse_obj(response.json()) 
+        return OSVBatchResponse.parse_obj(response.json())

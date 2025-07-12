@@ -14,4 +14,4 @@ async def get_all_dependencies():
     Returns a list of all dependencies across all projects.
     """
     dependencies_data = store.get_all_dependencies()
-    return [Dependency(**d) for d in dependencies_data] 
+    return [Dependency(**d) for d in dependencies_data]
