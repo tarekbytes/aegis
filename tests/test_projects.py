@@ -5,10 +5,16 @@ import pytest
 from fastapi.testclient import TestClient
 from fastapi import UploadFile
 from starlette.exceptions import HTTPException
+from starlette.status import HTTP_502_BAD_GATEWAY
 from packaging.requirements import Requirement
 import httpx
 
 from app.main import app
+from app.models import (
+    OSVBatchResponse,
+    QueryVulnerabilities,
+    OSVAbbreviatedVulnerability,
+)
 from app.routers.projects import validate_requirements_file
 
 client = TestClient(app)
@@ -80,11 +86,11 @@ async def test_empty_file_is_valid():
     assert result == []
 
 
-def test_create_project_success(monkeypatch):
+def test_create_project_no_vulns(monkeypatch):
     """
-    Tests successful project creation and OSV query.
+    Tests successful project creation when no vulnerabilities are found.
     """
-    mock_osv_response = {"results": []}  # Simulate no vulnerabilities found
+    mock_osv_response = OSVBatchResponse(results=[])
     mock_query = AsyncMock(return_value=mock_osv_response)
     monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
 
@@ -100,6 +106,37 @@ def test_create_project_success(monkeypatch):
         "name": "Test Project",
         "description": "A test project",
         "is_vulnerable": False,
+    }
+    assert response.json() == expected_response
+    mock_query.assert_called_once()
+
+
+def test_create_project_with_vulns(monkeypatch):
+    """
+    Tests successful project creation when vulnerabilities are found.
+    """
+    # This is an abbreviated OSV object for testing purposes.
+    mock_vuln = OSVAbbreviatedVulnerability(
+        id="CVE-2023-1234", modified="2023-01-01T00:00:00Z"
+    )
+    mock_osv_response = OSVBatchResponse(
+        results=[QueryVulnerabilities(vulns=[mock_vuln])]
+    )
+    mock_query = AsyncMock(return_value=mock_osv_response)
+    monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
+
+    file_content = "requests==2.24.0\n"
+    response = client.post(
+        "/projects/",
+        data={"name": "Test Project", "description": "A test project"},
+        files={"file": ("requirements.txt", file_content, "text/plain")},
+    )
+
+    assert response.status_code == 201
+    expected_response = {
+        "name": "Test Project",
+        "description": "A test project",
+        "is_vulnerable": True,
     }
     assert response.json() == expected_response
     mock_query.assert_called_once()
@@ -126,5 +163,5 @@ def test_create_project_osv_error(monkeypatch):
         files={"file": ("requirements.txt", file_content, "text/plain")},
     )
 
-    assert response.status_code == 500
+    assert response.status_code == HTTP_502_BAD_GATEWAY
     assert "Error from OSV API" in response.json()["detail"]
