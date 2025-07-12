@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: aegis-db
+    environment:
+      - POSTGRES_USER=aegis_user
+      - POSTGRES_PASSWORD=devpassword
+      - POSTGRES_DB=aegis
+    volumes:
+      # Mount the init script to be run on first start.
+      # This path is relative to the project root, where you should run the docker-compose command from.
+      - ../init.sql:/docker-entrypoint-initdb.d/init.sql
+      # Persist database data
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
