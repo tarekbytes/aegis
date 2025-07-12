@@ -3,4 +3,5 @@ uvicorn
 packaging
 python-multipart 
 pytest
-pytest-asyncio 
+pytest-asyncio
+httpx 
