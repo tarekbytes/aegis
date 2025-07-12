@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.routers import projects
+from app.routers import projects, dependencies
 
 app: FastAPI = FastAPI()
 
@@ -11,3 +11,6 @@ async def read_root() -> dict[str, str]:
 
 
 app.include_router(projects.router, prefix="/projects", tags=["projects"])
+app.include_router(
+    dependencies.router, prefix="/dependencies", tags=["dependencies"]
+)
