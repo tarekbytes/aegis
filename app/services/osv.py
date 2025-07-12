@@ -1,8 +1,10 @@
 import httpx
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from packaging.requirements import Requirement
 from packaging.version import Version, InvalidVersion
+
+from app.models import OSVBatchResponse
 
 
 OSV_API_URL = "https://api.osv.dev/v1/querybatch"
@@ -26,7 +28,7 @@ def _get_exact_version(req: Requirement) -> Optional[str]:
     return None
 
 
-async def query_osv_batch(requirements: List[Requirement]) -> Dict:
+async def query_osv_batch(requirements: List[Requirement]) -> OSVBatchResponse:
     """
     Queries the OSV API with a batch of requirements using package URLs (purls).
 
@@ -38,6 +40,9 @@ async def query_osv_batch(requirements: List[Requirement]) -> Dict:
         versions before querying.
     2.  It only constructs purls for the 'pypi' ecosystem. It does not handle
         requirements that point to Git repositories or other sources.
+
+    Returns:
+        An OSVBatchResponse object containing the parsed vulnerability data.
     """
     queries = []
     for req in requirements:
@@ -50,9 +55,9 @@ async def query_osv_batch(requirements: List[Requirement]) -> Dict:
             )
 
     if not queries:
-        return {"results": []}
+        return OSVBatchResponse(results=[])
 
     async with httpx.AsyncClient() as client:
         response = await client.post(OSV_API_URL, json={"queries": queries})
         response.raise_for_status()
-        return response.json() 
+        return OSVBatchResponse.parse_obj(response.json()) 

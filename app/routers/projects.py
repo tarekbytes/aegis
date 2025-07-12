@@ -1,18 +1,24 @@
 from fastapi import APIRouter, Depends, File, Form, UploadFile
-from starlette.status import HTTP_201_CREATED, HTTP_422_UNPROCESSABLE_ENTITY
+from starlette.status import (
+    HTTP_201_CREATED,
+    HTTP_422_UNPROCESSABLE_ENTITY,
+    HTTP_502_BAD_GATEWAY,
+)
 from starlette.exceptions import HTTPException
 from packaging.requirements import Requirement, InvalidRequirement
 import httpx
-from typing import List, Optional, Dict
+from typing import List, Optional
 
-from app.models.project import ProjectSummary, ProjectResponse
+from app.models.project import ProjectResponse, ProjectSummary
 from app.services.osv import query_osv_batch
 
 
 router: APIRouter = APIRouter()
 
 
-async def validate_requirements_file(file: UploadFile = File(..., description="A requirements.txt file")) -> List[Requirement]:
+async def validate_requirements_file(
+    file: UploadFile = File(..., description="A requirements.txt file")
+) -> List[Requirement]:
     """
     Dependency that validates an uploaded requirements.txt file and returns a list of requirements.
     """
@@ -55,12 +61,14 @@ async def create_project(
     - **file**: The `requirements.txt` file for the project.
     """
     try:
-        await query_osv_batch(requirements)
-        # TODO: Implement logic to determine is_vulnerable from the OSV response
-        return ProjectResponse(name=name, description=description, is_vulnerable=False)
+        osv_response = await query_osv_batch(requirements)
+        is_vulnerable = any(query.vulns for query in osv_response.results)
+        return ProjectResponse(
+            name=name, description=description, is_vulnerable=is_vulnerable
+        )
     except httpx.HTTPStatusError as e:
         raise HTTPException(
-            status_code=e.response.status_code,
+            status_code=HTTP_502_BAD_GATEWAY,
             detail=f"Error from OSV API: {e.response.text}",
         )
 
