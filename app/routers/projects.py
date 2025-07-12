@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile
+from starlette.status import HTTP_201_CREATED, HTTP_422_UNPROCESSABLE_ENTITY
+from starlette.exceptions import HTTPException
 import io
 from typing import List, Optional
 from packaging.requirements import Requirement, InvalidRequirement
@@ -27,13 +29,13 @@ async def validate_requirements_file(
             parsed_requirements.append(Requirement(line))
         except InvalidRequirement:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Invalid requirement on line {i + 1}: {line}",
             )
     return parsed_requirements
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED, response_model=ProjectResponse)
+@router.post("/", status_code=HTTP_201_CREATED, response_model=ProjectResponse)
 async def create_project(
     name: str = Form(...),
     description: Optional[str] = Form(None),

@@ -2,7 +2,8 @@ import unittest
 from unittest.mock import MagicMock, AsyncMock
 import io
 import pytest
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
+from starlette.exceptions import HTTPException
 from packaging.requirements import Requirement
 from app.routers.projects import validate_requirements_file
 
