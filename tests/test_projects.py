@@ -10,6 +10,7 @@ from packaging.requirements import Requirement
 import httpx
 
 from app.main import app
+from app.data import store
 from app.models import (
     OSVBatchResponse,
     QueryVulnerabilities,
@@ -18,6 +19,14 @@ from app.models import (
 from app.routers.projects import validate_requirements_file
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def clean_store():
+    """
+    A fixture that automatically clears the in-memory store before each test.
+    """
+    store.clear_projects_store()
 
 
 def create_mock_upload_file(content: str) -> UploadFile:
@@ -140,6 +149,33 @@ def test_create_project_with_vulns(monkeypatch):
     }
     assert response.json() == expected_response
     mock_query.assert_called_once()
+
+
+def test_create_and_get_projects(monkeypatch):
+    """
+    Tests creating a project and then retrieving it via the get_projects endpoint.
+    """
+    mock_osv_response = OSVBatchResponse(results=[])
+    mock_query = AsyncMock(return_value=mock_osv_response)
+    monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
+
+    # 1. Create a project
+    file_content = "requests==2.24.0\n"
+    create_response = client.post(
+        "/projects/",
+        data={"name": "E2E Test Project", "description": "A test for the full flow"},
+        files={"file": ("requirements.txt", file_content, "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    # 2. Get all projects and verify the new one is there
+    get_response = client.get("/projects/")
+    assert get_response.status_code == 200
+    projects = get_response.json()
+    assert len(projects) == 1
+    assert projects[0]["id"] == 1
+    assert projects[0]["name"] == "E2E Test Project"
+    assert projects[0]["description"] == "A test for the full flow"
 
 
 def test_create_project_osv_error(monkeypatch):

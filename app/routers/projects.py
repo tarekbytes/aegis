@@ -9,6 +9,7 @@ from packaging.requirements import Requirement, InvalidRequirement
 import httpx
 from typing import List, Optional
 
+from app.data import store
 from app.models.project import ProjectResponse, ProjectSummary
 from app.services.osv import query_osv_batch
 
@@ -63,6 +64,7 @@ async def create_project(
     try:
         osv_response = await query_osv_batch(requirements)
         is_vulnerable = any(query.vulns for query in osv_response.results)
+        store.add_project(name=name, description=description)
         return ProjectResponse(
             name=name, description=description, is_vulnerable=is_vulnerable
         )
@@ -75,9 +77,5 @@ async def create_project(
 
 @router.get("/", response_model=list[ProjectSummary])
 async def get_projects() -> list[ProjectSummary]:
-    # Until the create project endpoint is implemented, we'll return dummy data.
-    dummy_projects = [
-        ProjectSummary(id=1, name="Project Alpha", description="This is a dummy project"),
-        ProjectSummary(id=2, name="Project Beta", description="This is another dummy project"),
-    ]
-    return dummy_projects
+    projects_data = store.get_all_projects()
+    return [ProjectSummary(**p) for p in projects_data]
