@@ -60,4 +60,4 @@ def test_get_all_dependencies(monkeypatch):
     assert dependencies[0]["is_vulnerable"] is False
 
     assert dependencies[1]["name"] == "jinja2"
-    assert dependencies[1]["is_vulnerable"] is True 
+    assert dependencies[1]["is_vulnerable"] is True
