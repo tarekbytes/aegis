@@ -1,66 +1,58 @@
-from fastapi import APIRouter, File, UploadFile, Form, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 import io
+from typing import List, Optional
 from packaging.requirements import Requirement, InvalidRequirement
 from app.models.project import ProjectResponse, ProjectSummary
 
 router: APIRouter = APIRouter()
 
 
-async def validate_requirements_file(file: UploadFile = File(..., description="A requirements.txt file")) -> UploadFile:
+async def validate_requirements_file(
+    file: UploadFile = File(...),
+) -> List[Requirement]:
     """
-    Dependency that validates an uploaded requirements.txt file.
-    """
-    file.file.seek(0)
-    content: str = file.file.read().decode("utf-8")
+    Reads an uploaded requirements.txt file, validates its syntax,
+    and returns a list of Requirement objects.
 
-    invalid_lines: list[str] = []
-    for i, line in enumerate(content.splitlines(), 1):
+    Raises:
+        HTTPException: If the file contains invalid syntax.
+    """
+    contents: str = (await file.read()).decode("utf-8")
+    parsed_requirements: List[Requirement] = []
+    for i, line in enumerate(contents.splitlines()):
         line = line.strip()
-        if not line or line.startswith('#') or line.startswith('-'):
+        if not line or line.startswith("#"):
             continue
         try:
-            Requirement(line)
-        except InvalidRequirement as e:
-            invalid_lines.append(f"Line {i}: {e}")
-
-    if invalid_lines:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "message": "Invalid lines found in the requirements file.",
-                "errors": invalid_lines
-            },
-        )
-
-    file.file.seek(0)
-    return file
+            parsed_requirements.append(Requirement(line))
+        except InvalidRequirement:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid requirement on line {i + 1}: {line}",
+            )
+    return parsed_requirements
 
 
-@router.post(
-    "/",
-    response_model=ProjectResponse,
-    status_code=status.HTTP_201_CREATED,
-    responses={
-        422: {"description": "Validation Error: Invalid lines in requirements file"}
-    }
-)
+@router.post("/", status_code=status.HTTP_201_CREATED, response_model=ProjectResponse)
 async def create_project(
     name: str = Form(...),
-    description: str = Form(...),
-    requirements: UploadFile = Depends(validate_requirements_file)
+    description: Optional[str] = Form(None),
+    requirements: List[Requirement] = Depends(validate_requirements_file),
 ) -> ProjectResponse:
     """
-    Creates a new project. The uploaded 'requirements' file is validated
-    by the dependency before this endpoint code is run.
+    Creates a new project.
+    - **name**: The name of the project.
+    - **description**: An optional description for the project.
+    - **file**: The `requirements.txt` file for the project.
     """
-    requirements_content: bytes = await requirements.read()
-
-    # TODO: Implement the logic to save the project and process the requirements ...
-
+    # For now, we'll just return the parsed data.
+    # In the future, this will involve database operations.
+    dependency_strings: List[str] = [str(req) for req in requirements]
     return ProjectResponse(
+        project_id=1,  # Dummy ID
         name=name,
         description=description,
-        requirements=requirements.filename,
+        dependencies=dependency_strings,
     )
 
 
