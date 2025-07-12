@@ -23,6 +23,7 @@ async def validate_requirements_file(
 ) -> List[Requirement]:
     """
     Dependency that validates an uploaded requirements.txt file and returns a list of requirements.
+    All requirements must be pinned with '=='.
     """
     file.file.seek(0)
     content: str = file.file.read().decode("utf-8")
@@ -34,9 +35,16 @@ async def validate_requirements_file(
         if not line or line.startswith("#"):
             continue
         try:
-            requirements.append(Requirement(line))
+            req = Requirement(line)
+            specifiers = list(req.specifier)
+            if len(specifiers) != 1 or specifiers[0].operator != "==":
+                invalid_lines.append(
+                    f"Line {i}: '{line}' - must be pinned with '=='."
+                )
+                continue
+            requirements.append(req)
         except InvalidRequirement:
-            invalid_lines.append(f"Line {i}: {line}")
+            invalid_lines.append(f"Line {i}: '{line}' - invalid syntax.")
 
     if invalid_lines:
         raise HTTPException(
@@ -57,7 +65,7 @@ async def create_project(
     Creates a new project, queries OSV for vulnerabilities, and stores the results.
     - **name**: The name of the project.
     - **description**: An optional description for the project.
-    - **file**: The `requirements.txt` file for the project.
+    - **file**: The `requirements.txt` file for the project. All dependencies must be pinned with '=='.
     """
     try:
         osv_response = await query_osv_batch(requirements)
