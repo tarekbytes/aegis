@@ -1,12 +1,20 @@
-from .osv import OSVBatchResponse, QueryVulnerabilities, OSVAbbreviatedVulnerability
-from .project import ProjectResponse, ProjectSummary
-from .dependency import Dependency
+from .osv import (
+    OSVAbbreviatedVulnerability,
+    OSVBatchResponse,
+    QueryVulnerabilities,
+)
+from .project import Project, ProjectCreate, ProjectResponse, ProjectSummary
+from .dependency import Dependency, DependencyDetail
+
 
 __all__ = [
+    "OSVAbbreviatedVulnerability",
     "OSVBatchResponse",
     "QueryVulnerabilities",
-    "OSVAbbreviatedVulnerability",
+    "Project",
+    "ProjectCreate",
     "ProjectResponse",
     "ProjectSummary",
     "Dependency",
+    "DependencyDetail",
 ]
