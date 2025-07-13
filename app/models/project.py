@@ -11,3 +11,4 @@ class ProjectSummary(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
+    is_vulnerable: bool

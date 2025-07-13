@@ -191,6 +191,7 @@ def test_get_all_projects(monkeypatch):
     assert projects[0]["id"] == 1
     assert projects[0]["name"] == "My First Project"
     assert projects[0]["description"] == "A description"
+    assert projects[0]["is_vulnerable"] is False
 
 
 def test_get_project_dependencies(monkeypatch):
