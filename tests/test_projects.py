@@ -42,12 +42,12 @@ def create_mock_upload_file(content: str) -> UploadFile:
 @pytest.mark.asyncio
 async def test_valid_requirements_file():
     mock_upload_file = create_mock_upload_file(
-        "requests==2.28.1\n# A comment\npackaging"
+        "requests==2.28.1\n# A comment\npackaging==23.1"
     )
     result = await validate_requirements_file(mock_upload_file)
     assert len(result) == 2
     assert str(result[0]) == "requests==2.28.1"
-    assert str(result[1]) == "packaging"
+    assert str(result[1]) == "packaging==23.1"
 
 
 @pytest.mark.asyncio
@@ -57,6 +57,23 @@ async def test_invalid_requirements_file_raises_exception():
         await validate_requirements_file(mock_upload_file)
     assert exc_info.value.status_code == 422
     assert "Line 2" in exc_info.value.detail["errors"][0]
+
+
+@pytest.mark.asyncio
+async def test_unpinned_requirements_file_raises_exception():
+    """
+    Tests that the validator rejects requirements that are not pinned with '=='.
+    """
+    mock_upload_file = create_mock_upload_file(
+        "requests==2.28.1\ndjango\ntoml>0.1.0"
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await validate_requirements_file(mock_upload_file)
+    assert exc_info.value.status_code == 422
+    errors = exc_info.value.detail["errors"]
+    assert len(errors) == 2
+    assert "Line 2: 'django'" in errors[0]
+    assert "Line 3: 'toml>0.1.0'" in errors[1]
 
 
 def test_create_project_no_vulns(monkeypatch):
