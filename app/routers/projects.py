@@ -103,7 +103,12 @@ async def get_projects() -> list[ProjectSummary]:
     Returns a summary of all projects.
     """
     projects_data = store.get_all_projects()
-    return [ProjectSummary(**p) for p in projects_data]
+    summaries = []
+    for p in projects_data:
+        deps = store.get_dependencies_by_project_id(p["id"])
+        is_vulnerable = any(d["is_vulnerable"] for d in deps if d["is_vulnerable"] is not None)
+        summaries.append(ProjectSummary(**p, is_vulnerable=is_vulnerable))
+    return summaries
 
 
 @router.get("/{project_id}/dependencies", response_model=List[Dependency])
