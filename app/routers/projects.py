@@ -76,7 +76,7 @@ async def create_project(
             vulns = result.vulns
             dependencies_to_store.append(
                 {
-                    "name": req.name,
+                    "name": req.name.lower(),
                     "version": str(next(iter(req.specifier)).version),
                     "is_vulnerable": bool(vulns),
                     "vulnerability_ids": [v.id for v in vulns],

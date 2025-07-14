@@ -24,7 +24,7 @@ async def get_dependency(name: str, version: str | None = None):
     Returns a list of all dependencies that have the same name.
     If version is specified, it will return information about the exact dependency version.
     """
-    dependency_details = store.get_dependency_details(name, version)
+    dependency_details = store.get_dependency_details(name.lower(), version)
     if not dependency_details:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

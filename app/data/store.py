@@ -59,6 +59,7 @@ def get_dependency_details(name: str, version: Optional[str] = None) -> List[Dic
     Returns details for a dependency, including all projects that use it.
     If version is specified, it returns details for that specific version.
     """
+    name = name.lower()
     if version:
         deps = [d for d in _dependencies if d["name"] == name and d["version"] == version]
     else:

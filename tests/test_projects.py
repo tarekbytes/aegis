@@ -12,9 +12,9 @@ import httpx
 from app.main import app
 from app.data import store
 from app.models import (
-    OSVBatchResponse,
+    OSVVulnerability,
     QueryVulnerabilities,
-    OSVAbbreviatedVulnerability,
+    OSVBatchResponse,
 )
 from app.models.dependency import Dependency
 from app.routers.projects import validate_requirements_file
@@ -118,7 +118,7 @@ def test_create_project_with_vulns(monkeypatch):
         results=[
             QueryVulnerabilities(
                 vulns=[
-                    OSVAbbreviatedVulnerability(
+                    OSVVulnerability(
                         id="GHSA-1234", modified="2023-01-01T00:00:00Z"
                     )
                 ]
@@ -204,7 +204,7 @@ def test_get_project_dependencies(monkeypatch):
             QueryVulnerabilities(vulns=[]),  # First dep is clean
             QueryVulnerabilities(
                 vulns=[
-                    OSVAbbreviatedVulnerability(
+                    OSVVulnerability(
                         id="GHSA-5678", modified="2023-01-01T00:00:00Z"
                     )
                 ]
