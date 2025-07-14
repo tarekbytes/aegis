@@ -66,6 +66,8 @@ async def test_query_osv_batch_cache_miss(monkeypatch):
     monkeypatch.setattr(osv.httpx, 'AsyncClient', MagicMock(return_value=async_cm))
     out = await osv.query_osv_batch([req])
     assert isinstance(out, OSVBatchResponse)
+    assert out.results[0].vulns is not None
+    assert out.results[0].vulns[0].severity is not None
     assert out.results[0].vulns[0].severity[0].type == 'HIGH'
 
 @pytest.mark.asyncio
@@ -80,6 +82,8 @@ async def test_query_osv_batch_cache_hit_fresh(monkeypatch):
     cache_mock.wait_for_ready = AsyncMock()
     monkeypatch.setattr(osv, 'cache', cache_mock)
     out = await osv.query_osv_batch([req])
+    assert out.results[0].vulns is not None
+    assert out.results[0].vulns[0].severity is not None
     assert out.results[0].vulns[0].severity[0].type == 'LOW'
 
 @pytest.mark.asyncio
@@ -104,6 +108,8 @@ async def test_query_osv_batch_cache_hit_expired(monkeypatch):
     async_cm.__aexit__ = AsyncMock(return_value=None)
     monkeypatch.setattr(osv.httpx, 'AsyncClient', MagicMock(return_value=async_cm))
     out = await osv.query_osv_batch([req])
+    assert out.results[0].vulns is not None
+    assert out.results[0].vulns[0].severity is not None
     assert out.results[0].vulns[0].severity[0].type == 'MODERATE'
 
 @pytest.mark.asyncio
@@ -117,6 +123,8 @@ async def test_query_osv_batch_cache_fetching(monkeypatch):
     cache_mock.wait_for_ready = AsyncMock(return_value=qv)
     monkeypatch.setattr(osv, 'cache', cache_mock)
     out = await osv.query_osv_batch([req])
+    assert out.results[0].vulns is not None
+    assert out.results[0].vulns[0].severity is not None
     assert out.results[0].vulns[0].severity[0].type == 'CRITICAL'
 
 @pytest.mark.asyncio
