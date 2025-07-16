@@ -12,7 +12,7 @@ from typing import List, Optional
 from app.data import store
 from app.models.project import ProjectResponse, ProjectSummary
 from app.models.dependency import Dependency
-from app.services.osv import query_osv_batch
+from app.modules.osv import query_osv_batch
 
 
 router: APIRouter = APIRouter()

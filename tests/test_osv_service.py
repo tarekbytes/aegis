@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from packaging.requirements import Requirement
-from app.services import osv
+from app.modules import osv
 from app.models import OSVVulnerability, QueryVulnerabilities, OSVBatchResponse
 from app.models.osv import Severity, AffectedPackage
 
