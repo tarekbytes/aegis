@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+from app.exceptions import DuplicateProjectError
 
 _projects: List[Dict] = []
 _dependencies: List[Dict] = []
@@ -16,6 +17,12 @@ def get_all_projects() -> List[Dict]:
 def add_project(name: str, description: Optional[str]) -> int:
     """Adds a new project to the in-memory store and returns its ID."""
     global _next_project_id
+
+    """When we switch to posgres, this will be a check for a unique constraint on the name column."""
+    for project in _projects:
+        if project["name"] == name:
+            raise DuplicateProjectError(name)
+
     project_data = {
         "id": _next_project_id,
         "name": name,
