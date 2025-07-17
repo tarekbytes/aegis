@@ -19,6 +19,7 @@ from app.models.project import ProjectResponse, ProjectSummary
 from app.models.dependency import Dependency
 from app.modules.osv import query_osv_batch
 from app.exceptions import DuplicateProjectError, ProjectNotFoundError
+from app.services.dependency_extractor import extract_all_dependencies
 
 
 router: APIRouter = APIRouter()
@@ -29,25 +30,40 @@ async def get_validated_requirements(
 ) -> Tuple[List[Requirement], List[str]]:
     """
     Validates an uploaded requirements.txt file and returns the requirements
-    and any validation errors.
+    and any validation errors. Uses dependency extractor to expand requirements first.
     """
     contents = await file.read()
+    original_content = contents.decode()
     requirements: List[Requirement] = []
     validation_errors: List[str] = []
 
-    for i, line in enumerate(contents.decode().splitlines()):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        try:
-            req = Requirement(line)
-            specifiers = list(req.specifier)
-            if len(specifiers) != 1 or specifiers[0].operator != "==":
-                validation_errors.append(f"Line {i+1}: '{line}' must be pinned with '=='.")
+    try:
+        # First, expand dependencies using the extractor
+        expanded_content = await extract_all_dependencies(original_content)
+        
+        # Validate the expanded dependencies (this is what we actually store and scan)
+        expanded_lines = expanded_content.splitlines()
+        for i, line in enumerate(expanded_lines):
+            line = line.strip()
+            if not line or line.startswith("#"):
                 continue
-            requirements.append(req)
-        except InvalidRequirement:
-            validation_errors.append(f"Line {i+1}: '{line}' is not a valid requirement.")
+            
+            # Skip pip itself and setuptools which are always present
+            if line.startswith("pip==") or line.startswith("setuptools=="):
+                continue
+                
+            try:
+                req = Requirement(line)
+                specifiers = list(req.specifier)
+                if len(specifiers) != 1 or specifiers[0].operator != "==":
+                    validation_errors.append(f"Expanded dependency {i+1}: '{line}' must be pinned with '=='.")
+                    continue
+                requirements.append(req)
+            except InvalidRequirement:
+                validation_errors.append(f"Expanded dependency {i+1}: '{line}' is not a valid requirement.")
+                
+    except Exception as e:
+        validation_errors.append(f"Failed to extract dependencies: {str(e)}")
 
     return requirements, validation_errors
 

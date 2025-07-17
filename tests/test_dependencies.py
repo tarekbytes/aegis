@@ -41,6 +41,10 @@ def test_get_all_dependencies(monkeypatch):
     Tests that the global GET /dependencies endpoint returns a flat list of
     all dependencies from multiple projects.
     """
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(side_effect=["requests==2.28.1\n", "bar==1.0.0\n"])
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     # 1. Mock the OSV response for two separate project creations
     mock_osv_response_1 = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_osv_response_2 = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[make_vuln("MODERATE")])])
@@ -70,6 +74,10 @@ def test_get_dependency_by_name(monkeypatch):
     Tests that GET /dependencies/{name} returns all versions of a dependency
     if it exists in multiple projects.
     """
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(side_effect=["requests==2.28.1\n", "requests==2.28.2\n"])
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     # 1. Mock OSV responses
     mock_osv_response_1 = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_osv_response_2 = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
@@ -98,6 +106,10 @@ def test_get_dependency_by_name_and_version(monkeypatch):
     Tests that GET /dependencies/{name}?version={version} returns the
     correct specific version of a dependency.
     """
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     # 1. Mock OSV response
     mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_query = AsyncMock(return_value=mock_osv_response)
