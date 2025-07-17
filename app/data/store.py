@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 import logging
 
-from app.exceptions import DuplicateProjectError
+from app.exceptions import DuplicateProjectError, ProjectNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,57 @@ def add_project(name: str, description: Optional[str]) -> int:
     return project_id
 
 
+def update_project(project_id: int, name: str, description: Optional[str]) -> int:
+    """Updates a project in the in-memory store."""
+    global _projects
+    # fetch project by id
+    project = next((p for p in _projects if p["id"] == project_id), None)
+    if not project:
+        logger.error(f"Error updating project -- project with id {project_id} not found")
+        raise ProjectNotFoundError(project_id)
+
+    """Check all the other projects to make sure the name is unique."""
+    if any(project["name"] == name for project in _projects if project["id"] != project_id):
+        logger.error(f"Error updating project -- project {name} already exists")
+        raise DuplicateProjectError(name)
+
+    project_data = {
+        "id": project_id,
+        "name": name,
+        "description": description,
+    }
+
+    for p in _projects:
+        if p["id"] == project_id:
+            p.update(project_data)
+            break
+    
+    return project_id
+
+
+def delete_project(project_id: int) -> int:
+    """Deletes a project in the in-memory store."""
+    global _projects
+    # fetch project by id
+    project = next((p for p in _projects if p["id"] == project_id), None)
+    if not project:
+        logger.error(f"Error deleting project -- project with id {project_id} not found")
+        raise ProjectNotFoundError(project_id)
+
+    _projects = remove_project_by_id(project_id)
+    
+    # Also delete all dependencies associated with this project
+    delete_dependencies_by_project_id(project_id)
+    
+    return project_id
+
+def remove_project_by_id(target_id: int) -> List[Dict]:
+    """
+    Removes projects whose 'id' equals target_id.
+    """
+    return [p for p in _projects if p.get("id") != target_id]
+
+
 def add_dependencies(project_id: int, dependencies: List[Dict]):
     """Adds a batch of dependencies for a project to the in-memory store."""
     global _next_dependency_id
@@ -52,6 +103,20 @@ def add_dependencies(project_id: int, dependencies: List[Dict]):
         }
         _dependencies.append(dep_data)
         _next_dependency_id += 1
+
+
+def update_dependencies(project_id: int, dependencies: List[Dict]):
+    """Updates dependencies for a project by first removing existing ones and then adding new ones."""
+    # First, delete all existing dependencies for this project
+    delete_dependencies_by_project_id(project_id)
+    # Then add the new dependencies
+    add_dependencies(project_id, dependencies)
+
+
+def delete_dependencies_by_project_id(project_id: int):
+    """Deletes all dependencies for a given project_id."""
+    global _dependencies
+    _dependencies = [dep for dep in _dependencies if dep["project_id"] != project_id]
 
 
 def get_dependencies_by_project_id(project_id: int) -> List[Dict]:

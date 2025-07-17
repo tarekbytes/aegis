@@ -1,32 +1,37 @@
-import pytest
 from unittest.mock import AsyncMock
+from starlette.status import HTTP_200_OK, HTTP_404_NOT_FOUND
 
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models import OSVVulnerability, QueryVulnerabilities, OSVBatchResponse
+from app.models.osv import AffectedPackage, Severity
 
 
 client = TestClient(app)
 
 
 def make_vuln(severity_type=None):
-    sev = [{"type": severity_type, "score": "7.5"}] if severity_type else None
+    sev = [Severity(type=severity_type, score="7.5")] if severity_type else None
     return OSVVulnerability(
         id="VULN-2",
         severity=sev,
-        affected=[{"package": {"ecosystem": "PyPI", "name": "bar"}, "severity": sev}]
+        affected=[AffectedPackage(package={"ecosystem": "PyPI", "name": "bar"}, severity=sev)]
     )
 
 def test_osv_vuln_affect():
     v = make_vuln("MODERATE")
     # Use attribute access for Pydantic models
+    assert v.affected is not None
     assert v.affected[0].package["name"] == "bar"
+    assert v.affected[0].severity is not None
     assert v.affected[0].severity[0].type == "MODERATE"
 
 def test_query_vulnerabilities():
     vulns = [make_vuln("LOW"), make_vuln("HIGH")]
     qv = QueryVulnerabilities(vulns=vulns)
+    assert qv.vulns[0].severity is not None
+    assert qv.vulns[1].severity is not None
     assert qv.vulns[0].severity[0].type == "LOW"
     assert qv.vulns[1].severity[0].type == "HIGH"
 
@@ -56,7 +61,7 @@ def test_get_all_dependencies(monkeypatch):
     )
     # 4. Get all dependencies
     response = client.get("/dependencies")
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert isinstance(response.json(), list)
 
 
@@ -84,7 +89,7 @@ def test_get_dependency_by_name(monkeypatch):
     )
     # 3. Get dependency by name
     response = client.get("/dependencies/requests")
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert isinstance(response.json(), list)
 
 
@@ -106,7 +111,7 @@ def test_get_dependency_by_name_and_version(monkeypatch):
     )
     # 3. Get dependency by name and version
     response = client.get("/dependencies/requests?version=2.28.1")
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert isinstance(response.json(), list)
 
 
@@ -116,5 +121,5 @@ def test_get_dependency_not_found():
     dependency that doesn't exist.
     """
     response = client.get("/dependencies/nonexistent-package")
-    assert response.status_code == 404
+    assert response.status_code == HTTP_404_NOT_FOUND
     assert response.json()["detail"] == "Dependency 'nonexistent-package' not found."
