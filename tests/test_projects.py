@@ -389,7 +389,7 @@ def test_update_project_not_found_error(monkeypatch):
     original_update = store.update_project
     
     def mock_update_project(project_id, name=None, description=None):
-        raise ProjectNotFoundError(f"Project with ID {project_id} not found")
+        raise ProjectNotFoundError(project_id)
     
     store.update_project = mock_update_project
     
@@ -401,7 +401,7 @@ def test_update_project_not_found_error(monkeypatch):
         )
         assert response.status_code == HTTP_404_NOT_FOUND
         error = response.json()
-        assert "Project with ID 999 not found" in error["detail"]
+        assert "Project with id 999 not found" in error["detail"]
     finally:
         # Restore original function
         store.update_project = original_update
