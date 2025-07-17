@@ -48,17 +48,19 @@ def update_project(project_id: int, name: str, description: Optional[str]) -> in
 
     """Check all the other projects to make sure the name is unique."""
     if any(project["name"] == name for project in _projects if project["id"] != project_id):
-        logger.error(f"Error creating project -- project {name} already exists")
+        logger.error(f"Error updating project -- project {name} already exists")
         raise DuplicateProjectError(name)
-
-    _projects = remove_project_by_id(project_id)
 
     project_data = {
         "id": project_id,
         "name": name,
         "description": description,
     }
-    _projects.append(project_data)
+
+    for p in _projects:
+        if p["id"] == project_id:
+            p.update(project_data)
+            break
     
     return project_id
 
