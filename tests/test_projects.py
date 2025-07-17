@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, AsyncMock
 import pytest
 from fastapi.testclient import TestClient
-from fastapi import UploadFile, HTTPException
+from fastapi import UploadFile
 from starlette.status import (
     HTTP_200_OK,
     HTTP_201_CREATED,
@@ -9,9 +9,11 @@ from starlette.status import (
     HTTP_409_CONFLICT,
     HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_502_BAD_GATEWAY,
+    HTTP_500_INTERNAL_SERVER_ERROR,
 )
 import httpx
 import io
+
 
 from app.main import app
 from app.data import store
@@ -20,6 +22,7 @@ from app.models import (
     QueryVulnerabilities,
     OSVBatchResponse,
 )
+from app.exceptions import ProjectNotFoundError
 from app.routers.projects import get_validated_requirements
 
 
@@ -87,7 +90,7 @@ def test_create_project_no_vulns(monkeypatch):
         files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
     )
 
-    assert response.status_code == 201
+    assert response.status_code == HTTP_201_CREATED
     assert response.json() == {
         "name": "Test Project",
         "description": "A test project",
@@ -129,8 +132,7 @@ def test_create_project_invalid_requirements(monkeypatch):
     )
     assert response.status_code == HTTP_422_UNPROCESSABLE_ENTITY
     error = response.json()
-    assert error["name"] == "ValidationError"
-    assert "is not a valid requirement" in error["description"]
+    assert "is not a valid requirement" in error["detail"]
 
 
 def test_create_project_unpinned_requirements(monkeypatch):
@@ -142,8 +144,7 @@ def test_create_project_unpinned_requirements(monkeypatch):
     )
     assert response.status_code == HTTP_422_UNPROCESSABLE_ENTITY
     error = response.json()
-    assert error["name"] == "ValidationError"
-    assert "must be pinned" in error["description"]
+    assert "must be pinned" in error["detail"]
 
 
 def test_create_project_duplicate_name(monkeypatch):
@@ -162,8 +163,7 @@ def test_create_project_duplicate_name(monkeypatch):
 
     assert response.status_code == HTTP_409_CONFLICT
     error = response.json()
-    assert error["name"] == "DuplicateProjectError"
-    assert "Project with name 'Duplicate Test' already exists" in error["description"]
+    assert "Project with name 'Duplicate Test' already exists" in error["detail"]
 
 
 def test_create_project_osv_error(monkeypatch):
@@ -181,8 +181,7 @@ def test_create_project_osv_error(monkeypatch):
 
     assert response.status_code == HTTP_502_BAD_GATEWAY
     error = response.json()
-    assert error["name"] == "OSVServiceError"
-    assert "Error from OSV API: OSV Error" in error["description"]
+    assert "Error from OSV API: OSV Error" in error["detail"]
 
 
 def test_get_all_projects(monkeypatch):
@@ -200,9 +199,349 @@ def test_get_all_projects(monkeypatch):
 
 
 def test_get_project_dependencies_not_found():
-    """Tests that a 404 error is returned for a non-existent project."""
+    """Tests that the get_project_dependencies endpoint returns a 404 when project doesn't exist."""
     response = client.get("/projects/999/dependencies")
     assert response.status_code == HTTP_404_NOT_FOUND
     error = response.json()
-    assert error["name"] == "ProjectNotFoundError"
-    assert "Project with ID 999 not found" in error["description"]
+    assert "Project with ID 999 not found" in error["detail"]
+
+
+def test_delete_project_not_found():
+    """Tests that deleting a non-existent project returns a 404 error."""
+    response = client.delete("/projects/999")
+    assert response.status_code == HTTP_404_NOT_FOUND
+    error = response.json()
+    assert "Project with id 999 not found" in error["detail"]
+
+
+def test_delete_project_success():
+    """Tests that deleting an existing project returns a 200 success response."""
+    # First create a project
+    client.post(
+        "/projects/",
+        data={"name": "Project to Delete", "description": "A test project"},
+        files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
+    )
+    
+    # Now delete the project (assuming it has ID 1 since we clear the store before each test)
+    response = client.delete("/projects/1")
+    assert response.status_code == HTTP_200_OK
+    result = response.json()
+    assert result["message"] == "Project deleted successfully"
+
+
+def test_delete_project_unexpected_error(monkeypatch):
+    """Tests that unexpected errors in delete_project are handled properly."""
+    # Mock store.delete_project to raise an unexpected exception
+    original_delete = store.delete_project
+    
+    def mock_delete_project(project_id):
+        raise RuntimeError("Unexpected database error")
+    
+    store.delete_project = mock_delete_project
+    
+    try:
+        response = client.delete("/projects/1")
+        assert response.status_code == HTTP_500_INTERNAL_SERVER_ERROR
+        error = response.json()
+        assert error["detail"] == "Internal server error"
+    finally:
+        # Restore original function
+        store.delete_project = original_delete
+
+
+def test_update_project_success(monkeypatch):
+    """Test updating a project with valid data succeeds."""
+    # Mock OSV response
+    mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
+    mock_query = AsyncMock(return_value=mock_osv_response)
+    monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
+
+    # Create a project
+    create_resp = client.post(
+        "/projects/",
+        data={"name": "Alpha", "description": "desc1"},
+        files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
+    )
+    project_id = 1
+    assert create_resp.status_code == HTTP_201_CREATED
+
+    # Update the project (keep name the same)
+    update_resp = client.put(
+        f"/projects/{project_id}",
+        data={"name": "Alpha", "description": "desc2"},
+        files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
+    )
+    assert update_resp.status_code == HTTP_200_OK
+    assert update_resp.json()["name"] == "Alpha"
+    assert update_resp.json()["description"] == "desc2"
+
+
+def test_update_project_duplicate_name(monkeypatch):
+    """Test updating a project to a name that already exists fails with 409."""
+    mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
+    mock_query = AsyncMock(return_value=mock_osv_response)
+    monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
+
+    # Create two projects
+    client.post(
+        "/projects/",
+        data={"name": "Alpha"},
+        files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
+    )
+    client.post(
+        "/projects/",
+        data={"name": "Beta"},
+        files={"file": ("requirements.txt", b"flask==2.0.0", "text/plain")},
+    )
+    project2_id = 2
+
+    # Try to update project 2 to name 'Alpha' (should fail)
+    update_resp = client.put(
+        f"/projects/{project2_id}",
+        data={"name": "Alpha"},
+        files={"file": ("requirements.txt", b"flask==2.0.0", "text/plain")},
+    )
+    assert update_resp.status_code == HTTP_409_CONFLICT
+    assert "already exists" in update_resp.json()["detail"]
+
+    # Update project 2 to keep its own name (should succeed)
+    update_resp2 = client.put(
+        f"/projects/{project2_id}",
+        data={"name": "Beta"},
+        files={"file": ("requirements.txt", b"flask==2.0.0", "text/plain")},
+    )
+    assert update_resp2.status_code == HTTP_200_OK
+    assert update_resp2.json()["name"] == "Beta"
+
+
+def test_update_project_not_found(monkeypatch):
+    """Test updating a non-existent project returns 404."""
+    mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
+    mock_query = AsyncMock(return_value=mock_osv_response)
+    monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
+
+    update_resp = client.put(
+        "/projects/999",
+        data={"name": "Ghost"},
+        files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
+    )
+    assert update_resp.status_code == HTTP_404_NOT_FOUND
+    assert "not found" in update_resp.json()["detail"]
+
+
+def test_update_project_invalid_requirements(monkeypatch):
+    """Test updating a project with invalid requirements returns 422."""
+    mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
+    mock_query = AsyncMock(return_value=mock_osv_response)
+    monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
+
+    # Create a project
+    client.post(
+        "/projects/",
+        data={"name": "Alpha"},
+        files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
+    )
+    project_id = 1
+
+    # Try to update with invalid requirements
+    update_resp = client.put(
+        f"/projects/{project_id}",
+        data={"name": "Alpha"},
+        files={"file": ("requirements.txt", b"requests==2.28.1\n-r other.txt", "text/plain")},
+    )
+    assert update_resp.status_code == HTTP_422_UNPROCESSABLE_ENTITY
+    assert "is not a valid requirement" in update_resp.json()["detail"]
+
+
+def test_update_project_osv_error(monkeypatch):
+    """Test updating a project when OSV API fails returns 502."""
+    mock_query = AsyncMock(
+        side_effect=httpx.HTTPStatusError("Error", request=MagicMock(), response=MagicMock(text="OSV Error"))
+    )
+    monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
+
+    # Create a project
+    client.post(
+        "/projects/",
+        data={"name": "Alpha"},
+        files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
+    )
+    project_id = 1
+
+    # Try to update
+    update_resp = client.put(
+        f"/projects/{project_id}",
+        data={"name": "Alpha"},
+        files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
+    )
+    assert update_resp.status_code == HTTP_502_BAD_GATEWAY
+    assert "Error from OSV API" in update_resp.json()["detail"]
+
+
+def test_update_project_not_found_error(monkeypatch):
+    """Tests that update_project returns 404 when project doesn't exist."""
+    mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
+    mock_query = AsyncMock(return_value=mock_osv_response)
+    monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
+    
+    # Mock store.update_project to raise ProjectNotFoundError
+    original_update = store.update_project
+    
+    def mock_update_project(project_id, name=None, description=None):
+        raise ProjectNotFoundError(f"Project with ID {project_id} not found")
+    
+    store.update_project = mock_update_project
+    
+    try:
+        response = client.put(
+            "/projects/999",
+            data={"name": "Updated Project", "description": "Updated description"},
+            files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
+        )
+        assert response.status_code == HTTP_404_NOT_FOUND
+        error = response.json()
+        assert "Project with ID 999 not found" in error["detail"]
+    finally:
+        # Restore original function
+        store.update_project = original_update
+
+
+def test_update_project_unexpected_error(monkeypatch):
+    """Tests that unexpected errors in update_project are handled properly."""
+    mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
+    mock_query = AsyncMock(return_value=mock_osv_response)
+    monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
+    
+    # Mock store.update_project to raise an unexpected exception
+    original_update = store.update_project
+    
+    def mock_update_project(project_id, name=None, description=None):
+        raise RuntimeError("Unexpected database error")
+    
+    store.update_project = mock_update_project
+    
+    try:
+        response = client.put(
+            "/projects/1",
+            data={"name": "Updated Project", "description": "Updated description"},
+            files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
+        )
+        assert response.status_code == HTTP_500_INTERNAL_SERVER_ERROR
+        error = response.json()
+        assert error["detail"] == "Internal server error"
+    finally:
+        # Restore original function
+        store.update_project = original_update
+
+
+def test_create_project_unexpected_error(monkeypatch):
+    """Tests that unexpected errors in create_project are handled properly."""
+    mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
+    mock_query = AsyncMock(return_value=mock_osv_response)
+    monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
+    
+    # Mock store.add_project to raise an unexpected exception
+    original_add = store.add_project
+    
+    def mock_add_project(name, description=None):
+        raise RuntimeError("Unexpected database error")
+    
+    store.add_project = mock_add_project
+    
+    try:
+        response = client.post(
+            "/projects/",
+            data={"name": "Error Project", "description": "A test project"},
+            files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
+        )
+        assert response.status_code == HTTP_500_INTERNAL_SERVER_ERROR
+        error = response.json()
+        assert error["detail"] == "Internal server error"
+    finally:
+        # Restore original function
+        store.add_project = original_add
+
+
+@pytest.mark.asyncio
+async def test_get_validated_requirements_continue_on_unpinned():
+    """Tests that the continue statement is executed when requirements are not pinned."""
+    mock_upload_file = create_mock_upload_file(
+        "requests==2.28.1\ndjango\n# comment\nflask>=2.0"
+    )
+    requirements, errors = await get_validated_requirements(mock_upload_file)
+    assert len(requirements) == 1  # Only requests==2.28.1 should be valid
+    assert len(errors) == 2  # django and flask>=2.0 should cause errors
+    assert str(requirements[0]) == "requests==2.28.1"
+    assert any("must be pinned" in error for error in errors)
+
+
+def test_get_project_dependencies_empty_list():
+    """Tests that get_project_dependencies returns empty list when project exists but has no dependencies."""
+    # First create a project
+    client.post(
+        "/projects/",
+        data={"name": "Empty Dependencies Project", "description": "A test project"},
+        files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
+    )
+    
+    # Get the project ID (assuming it's 1 since we clear the store before each test)
+    response = client.get("/projects/1/dependencies")
+    assert response.status_code == HTTP_200_OK
+    dependencies = response.json()
+    assert isinstance(dependencies, list)
+    # The project should have dependencies from the requirements.txt file
+    assert len(dependencies) > 0
+
+
+def test_root_endpoint():
+    """Test the root endpoint returns the expected message."""
+    response = client.get("/")
+    assert response.status_code == HTTP_200_OK
+    assert response.json() == {"message": "You seem lost!"}
+
+
+def test_generic_exception_handler():
+    """Test that the generic exception handler is properly configured."""
+    # This test verifies that the exception handler is properly registered
+    # The actual exception handling is tested through integration tests
+    # where real exceptions occur in the application flow
+    assert hasattr(app, 'exception_handlers')
+    assert Exception in app.exception_handlers
+
+
+def test_lifespan_event(monkeypatch):
+    """Test that the scheduler starts and shuts down during lifespan events."""
+    started = {}
+    shutdown = {}
+    monkeypatch.setattr("app.services.scheduler.start", lambda: started.setdefault("called", True))
+    monkeypatch.setattr("app.services.scheduler.shutdown", lambda: shutdown.setdefault("called", True))
+    with TestClient(app):
+        assert started.get("called")
+    assert shutdown.get("called")
+
+
+def test_remove_project_by_id():
+    """Test remove_project_by_id removes the correct project."""
+    store.clear_projects_store()
+    store._projects.extend([
+        {"id": 1, "name": "A"},
+        {"id": 2, "name": "B"},
+    ])
+    result = store.remove_project_by_id(1)
+    assert len(result) == 1
+    assert result[0]["id"] == 2
+
+
+def test_update_project_removal_and_readd():
+    """Test update_project removes and re-adds the project with updated data."""
+    store.clear_projects_store()
+    pid = store.add_project("OldName", "desc")
+    store.update_project(pid, "NewName", "newdesc")
+    projects = store.get_all_projects()
+    assert len(projects) == 1
+    assert projects[0]["name"] == "NewName"
+    assert projects[0]["description"] == "newdesc"
+
+
+

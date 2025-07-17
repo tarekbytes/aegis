@@ -1,7 +1,7 @@
 import logging
 from typing import List
 from fastapi import APIRouter, HTTPException
-from starlette import status
+from starlette.status import HTTP_404_NOT_FOUND
 
 from app.data import store
 from app.models.dependency import Dependency, DependencyDetail
@@ -30,7 +30,7 @@ async def get_dependency(name: str, version: str | None = None):
     if not dependency_details:
         logger.error(f"Dependency '{name}' not found.")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=HTTP_404_NOT_FOUND,
             detail=f"Dependency '{name}' not found.",
         )
     return [DependencyDetail(**d) for d in dependency_details]

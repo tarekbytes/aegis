@@ -1,20 +1,24 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.status import (
+    HTTP_200_OK,
     HTTP_201_CREATED,
     HTTP_404_NOT_FOUND,
     HTTP_422_UNPROCESSABLE_ENTITY,
+    HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_502_BAD_GATEWAY,
+    HTTP_409_CONFLICT,
 )
 from typing import List, Optional, Tuple, Dict
 from packaging.requirements import Requirement, InvalidRequirement
 import httpx
+import logging
 
 from app.data import store
 from app.models.project import ProjectResponse, ProjectSummary
 from app.models.dependency import Dependency
-from app.models.error import Error
 from app.modules.osv import query_osv_batch
+from app.exceptions import DuplicateProjectError, ProjectNotFoundError
 
 
 router: APIRouter = APIRouter()
@@ -62,11 +66,9 @@ async def create_project(
     """
     requirements, validation_errors = validated_reqs
     if validation_errors:
-        error = Error(
-            name="ValidationError", description=", ".join(validation_errors)
-        )
-        return JSONResponse(
-            status_code=HTTP_422_UNPROCESSABLE_ENTITY, content=error.model_dump()
+        raise HTTPException(
+            status_code=HTTP_422_UNPROCESSABLE_ENTITY, 
+            detail=", ".join(validation_errors)
         )
 
     try:
@@ -93,11 +95,92 @@ async def create_project(
             description=description,
             is_vulnerable=is_vulnerable,
         )
+    except DuplicateProjectError as e:
+        raise HTTPException(status_code=HTTP_409_CONFLICT, detail=str(e))
     except httpx.HTTPStatusError as e:
-        error = Error(name="OSVServiceError", description=f"Error from OSV API: {e.response.text}")
-        return JSONResponse(status_code=HTTP_502_BAD_GATEWAY, content=error.model_dump())
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail=f"Error from OSV API: {e.response.text}"
+        )
+    except Exception as e:
+        logging.getLogger(__name__).exception(f"Unexpected error in create_project: {e}")
+        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
+@router.put("/{project_id}", status_code=HTTP_200_OK, response_model=ProjectResponse)
+async def update_project(
+    project_id: int,
+    name: str = Form(...),
+    description: Optional[str] = Form(None),
+    validated_reqs: Tuple[List[Requirement], List[str]] = Depends(
+        get_validated_requirements
+    ),
+):
+    """
+    Updates a project and fetches vulnerability information for its
+    dependencies.
+    """
+    requirements, validation_errors = validated_reqs
+    if validation_errors:
+        raise HTTPException(
+            status_code=HTTP_422_UNPROCESSABLE_ENTITY, 
+            detail=", ".join(validation_errors)
+        )
+
+    try:
+        osv_response = await query_osv_batch(requirements)
+        store.update_project(project_id, name=name, description=description)
+
+        dependencies_to_store: List[Dict] = []
+        for req, result in zip(requirements, osv_response.results):
+            vulns = result.vulns if result and result.vulns else []
+            dependencies_to_store.append(
+                {
+                    "name": req.name.lower(),
+                    "version": str(next(iter(req.specifier)).version),
+                    "is_vulnerable": bool(vulns),
+                    "vulnerability_ids": [v.id for v in vulns],
+                }
+            )
+
+        store.add_dependencies(project_id, dependencies_to_store)
+        is_vulnerable = any(d["is_vulnerable"] for d in dependencies_to_store)
+
+        return ProjectResponse(
+            name=name,
+            description=description,
+            is_vulnerable=is_vulnerable,
+        )
+    except DuplicateProjectError as e:
+        raise HTTPException(status_code=HTTP_409_CONFLICT, detail=str(e))
+    except ProjectNotFoundError as e:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(e))
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail=f"Error from OSV API: {e.response.text}"
+        )
+    except Exception as e:
+        logging.getLogger(__name__).exception(f"Unexpected error in update_project: {e}")
+        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+
+
+
+@router.delete("/{project_id}", status_code=HTTP_200_OK)
+async def delete_project(project_id: int):
+    """
+    Deletes a project.
+    """
+    try:
+        store.delete_project(project_id)
+        return JSONResponse(status_code=HTTP_200_OK, content={"message": "Project deleted successfully"})
+    except ProjectNotFoundError as e:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        logging.getLogger(__name__).exception(f"Unexpected error in delete_project: {e}")
+        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+
+    
 @router.get("/", response_model=list[ProjectSummary])
 async def get_projects() -> list[ProjectSummary]:
     """
@@ -122,6 +205,8 @@ async def get_project_dependencies(project_id: int):
         # Check if the project exists at all to return a 404
         projects = store.get_all_projects()
         if not any(p["id"] == project_id for p in projects):
-            error = Error(name="ProjectNotFoundError", description=f"Project with ID {project_id} not found")
-            return JSONResponse(status_code=HTTP_404_NOT_FOUND, content=error.model_dump())
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail=f"Project with ID {project_id} not found"
+            )
     return [Dependency(**d) for d in dependencies_data]

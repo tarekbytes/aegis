@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 import logging
 
-from app.exceptions import DuplicateProjectError
+from app.exceptions import DuplicateProjectError, ProjectNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,52 @@ def add_project(name: str, description: Optional[str]) -> int:
     project_id = _next_project_id
     _next_project_id += 1
     return project_id
+
+
+def update_project(project_id: int, name: str, description: Optional[str]) -> int:
+    """Updates a project in the in-memory store."""
+    global _projects
+    # fetch project by id
+    project = next((p for p in _projects if p["id"] == project_id), None)
+    if not project:
+        logger.error(f"Error updating project -- project with id {project_id} not found")
+        raise ProjectNotFoundError(project_id)
+
+    """Check all the other projects to make sure the name is unique."""
+    if any(project["name"] == name for project in _projects if project["id"] != project_id):
+        logger.error(f"Error creating project -- project {name} already exists")
+        raise DuplicateProjectError(name)
+
+    _projects = remove_project_by_id(project_id)
+
+    project_data = {
+        "id": project_id,
+        "name": name,
+        "description": description,
+    }
+    _projects.append(project_data)
+    
+    return project_id
+
+
+def delete_project(project_id: int) -> int:
+    """Deletes a project in the in-memory store."""
+    global _projects
+    # fetch project by id
+    project = next((p for p in _projects if p["id"] == project_id), None)
+    if not project:
+        logger.error(f"Error deleting project -- project with id {project_id} not found")
+        raise ProjectNotFoundError(project_id)
+
+    _projects = remove_project_by_id(project_id)
+    
+    return project_id
+
+def remove_project_by_id(target_id: int) -> List[Dict]:
+    """
+    Removes projects whose 'id' equals target_id.
+    """
+    return [p for p in _projects if p.get("id") != target_id]
 
 
 def add_dependencies(project_id: int, dependencies: List[Dict]):

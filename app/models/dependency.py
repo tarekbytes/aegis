@@ -2,7 +2,6 @@ from datetime import datetime
 from typing import List
 from pydantic import BaseModel, Field
 
-from app.models.project import ProjectSummary
 
 
 class Dependency(BaseModel):
