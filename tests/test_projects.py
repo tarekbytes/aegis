@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from fastapi import UploadFile
@@ -13,6 +13,7 @@ from starlette.status import (
 )
 import httpx
 import io
+from packaging.specifiers import SpecifierSet
 
 
 from app.main import app
@@ -555,6 +556,47 @@ async def test_get_validated_requirements_continue_on_unpinned(monkeypatch):
     assert len(errors) == 2  # django and flask>=2.0 should cause errors
     assert str(requirements[0]) == "requests==2.28.1"
     assert any("must be pinned" in error for error in errors)
+
+
+@pytest.mark.asyncio
+async def test_get_validated_requirements_ignore_pip_syntax():
+    """Test that pip requirement syntax is properly ignored during validation."""
+    # Create a requirements file with various pip syntax forms
+    requirements_content = """# This is a comment
+-r other.txt
+--requirement=another.txt
+-f https://example.com/simple/
+--find-links=https://example.com/wheels/
+--index-url=https://pypi.org/simple/
+--extra-index-url=https://pypi.org/simple/
+--trusted-host=example.com
+--no-index
+--no-deps
+--pre
+--editable=./local-package
+-e ./another-local-package
+flask==2.0.1
+requests==2.25.1
+"""
+    
+    # Mock the dependency extractor to return the same content
+    with patch('app.routers.projects.extract_all_dependencies') as mock_extract:
+        mock_extract.return_value = requirements_content
+        
+        # Create a mock file
+        mock_file = AsyncMock()
+        mock_file.read.return_value = requirements_content.encode()
+        
+        requirements, validation_errors = await get_validated_requirements(mock_file)
+        
+        # Should have no validation errors for pip syntax
+        assert len(validation_errors) == 0
+        # Should have 2 valid requirements
+        assert len(requirements) == 2
+        assert requirements[0].name == "flask"
+        assert requirements[0].specifier == SpecifierSet("==2.0.1")
+        assert requirements[1].name == "requests"
+        assert requirements[1].specifier == SpecifierSet("==2.25.1")
 
 
 def test_get_project_dependencies_empty_list(monkeypatch):

@@ -3,6 +3,7 @@ import tempfile
 import os
 import shutil
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -13,17 +14,22 @@ async def extract_all_dependencies(requirements_content: str) -> str:
     """
     logger.info(f"Starting dependency extraction for requirements: {requirements_content.strip()}")
     
-    temp_dir = tempfile.mkdtemp()
-    venv_dir = os.path.join(temp_dir, "venv")
-    req_file = os.path.join(temp_dir, "requirements.txt")
+    temp_dir = None
     try:
+        temp_dir = tempfile.mkdtemp()
+        venv_dir = os.path.join(temp_dir, "venv")
+        req_file = os.path.join(temp_dir, "requirements.txt")
+        
         # Write requirements.txt
         with open(req_file, "w") as f:
             f.write(requirements_content)
 
+        # Cross-platform Python executable
+        python_exe = sys.executable
+
         # Create venv
         proc = await asyncio.create_subprocess_exec(
-            "python3", "-m", "venv", venv_dir,
+            python_exe, "-m", "venv", venv_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -68,4 +74,5 @@ async def extract_all_dependencies(requirements_content: str) -> str:
         logger.info(f"Dependency extraction completed. pip freeze output:\n{freeze_output.strip()}")
         return freeze_output if freeze_output.endswith("\n") else freeze_output + "\n"
     finally:
-        shutil.rmtree(temp_dir) 
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir) 

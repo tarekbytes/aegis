@@ -39,16 +39,29 @@ async def get_validated_requirements(
 
     try:
         # First, expand dependencies using the extractor
-        expanded_content = await extract_all_dependencies(original_content)
+        await extract_all_dependencies(original_content)
         
-        # Validate the expanded requirements
-        for i, line in enumerate(expanded_content.splitlines()):
+        # Validate the original requirements first to get proper line numbers
+        original_lines = original_content.splitlines()
+        for i, line in enumerate(original_lines):
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            # Ignore file references and other non-package requirements
-            if line.startswith("-r ") or line.startswith("--requirement ") or line.startswith("-f ") or line.startswith("--find-links "):
+            
+            # Comprehensive filtering for pip requirement syntax
+            # Handle all forms: -r file.txt, -rfile.txt, --requirement file.txt, --requirement=file.txt
+            if (line.startswith("-r ") or line.startswith("-r") or 
+                line.startswith("--requirement ") or line.startswith("--requirement=") or
+                line.startswith("-f ") or line.startswith("-f") or
+                line.startswith("--find-links ") or line.startswith("--find-links=") or
+                line.startswith("--index-url ") or line.startswith("--index-url=") or
+                line.startswith("--extra-index-url ") or line.startswith("--extra-index-url=") or
+                line.startswith("--trusted-host ") or line.startswith("--trusted-host=") or
+                line.startswith("--no-index") or line.startswith("--no-deps") or
+                line.startswith("--pre") or line.startswith("--editable") or
+                line.startswith("-e ") or line.startswith("-e")):
                 continue
+                
             try:
                 req = Requirement(line)
                 specifiers = list(req.specifier)
