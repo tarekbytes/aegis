@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+import logging
 
 from app.exceptions import DuplicateProjectError
+
+logger = logging.getLogger(__name__)
 
 _projects: List[Dict] = []
 _dependencies: List[Dict] = []
@@ -19,9 +22,9 @@ def add_project(name: str, description: Optional[str]) -> int:
     global _next_project_id
 
     """When we switch to posgres, this will be a check for a unique constraint on the name column."""
-    for project in _projects:
-        if project["name"] == name:
-            raise DuplicateProjectError(name)
+    if any(project["name"] == name for project in _projects):
+        logger.error(f"Error creating project -- project {name} already exists")
+        raise DuplicateProjectError(name)
 
     project_data = {
         "id": _next_project_id,

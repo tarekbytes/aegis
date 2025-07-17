@@ -2,12 +2,15 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pytz import utc
 import time
 from packaging.requirements import Requirement
+import logging
 
 from app.data import store
 from app.models.osv import OSVBatchResponse
 from app.modules.osv import query_osv_batch, _calculate_ttl
 from app.services.cache import cache, CacheEntry
 from app.modules.osv import TTL_CRITICAL
+
+logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler(timezone=utc)
 
@@ -30,10 +33,10 @@ async def scheduled_vulnerability_scan():
             stale_deps_reqs.append(Requirement(f"{name}=={version}"))
 
     if not stale_deps_reqs:
-        print("No stale dependencies to scan.")
+        logger.info("No stale dependencies to scan.")
         return
 
-    print(f"Found {len(stale_deps_reqs)} stale dependencies to scan.")
+    logger.info(f"Found {len(stale_deps_reqs)} stale dependencies to scan.")
     # 3. Batch query osv.dev for stale dependencies
     osv_results: OSVBatchResponse = await query_osv_batch(stale_deps_reqs)
 
@@ -50,7 +53,7 @@ async def scheduled_vulnerability_scan():
         ttl = _calculate_ttl(query_vulns.vulns)
         new_entry = CacheEntry(status='ready', data=query_vulns, expiry_timestamp=time.time() + ttl)
         await cache.set(cache_key, new_entry)
-        print(f"Updated cache for {name}=={version} (TTL: {ttl} seconds)")
+        logger.info(f"Updated cache for {name}=={version} (TTL: {ttl} seconds)")
         # Properly clear the refresh entry
         async with cache._lock:
             cache._store.pop(cache_key + ':refresh', None)
@@ -58,11 +61,11 @@ async def scheduled_vulnerability_scan():
         # Update dependency records in the store
         store.update_dependency_vulnerability(name, version, has_vulns, vuln_ids)
         if has_vulns:
-            print(f"Found {len(vuln_ids)} vulnerabilities for {name}=={version}. Updated store.")
+            logger.info(f"Found {len(vuln_ids)} vulnerabilities for {name}=={version}. Updated store.")
 
 
 def start():
-    print("Adding scheduled_vulnerability_scan job to scheduler")
+    logger.info("Adding scheduled_vulnerability_scan job to scheduler")
     scheduler.add_job(
         scheduled_vulnerability_scan,
         'interval',

@@ -1,3 +1,4 @@
+import logging
 from fastapi import FastAPI, Request
 from starlette.responses import JSONResponse
 from starlette.status import HTTP_409_CONFLICT
@@ -8,14 +9,17 @@ from app.routers import projects, dependencies
 from app.services import scheduler
 from contextlib import asynccontextmanager
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 @asynccontextmanager
 async def lifespan(app):
-    print("Starting scheduler...")
+    logger.info("Starting scheduler...")
     scheduler.start()
     try:
         yield
     finally:
-        print("Shutting down scheduler...")
+        logger.info("Shutting down scheduler...")
         scheduler.shutdown()
 
 app = FastAPI(lifespan=lifespan)
