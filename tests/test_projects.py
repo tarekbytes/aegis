@@ -244,7 +244,7 @@ def test_get_project_dependencies_not_found():
     response = client.get("/projects/999/dependencies")
     assert response.status_code == HTTP_404_NOT_FOUND
     error = response.json()
-    assert "Project with ID 999 not found" in error["detail"]
+    assert "Project with id 999 not found" in error["detail"]
 
 
 def test_delete_project_not_found():

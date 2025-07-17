@@ -11,7 +11,7 @@ class DuplicateProjectError(ConflictError):
 
 
 class ProjectNotFoundError(Exception):
-    """Raised when a project with the given ID is not found."""
+    """Raised when a project with the given id is not found."""
     def __init__(self, project_id):
         super().__init__(f"Project with id {project_id} not found")
         self.project_id = project_id

@@ -18,7 +18,7 @@ def get_all_projects() -> List[Dict]:
 
 
 def add_project(name: str, description: Optional[str]) -> int:
-    """Adds a new project to the in-memory store and returns its ID."""
+    """Adds a new project to the in-memory store and returns its id."""
     global _next_project_id
 
     """When we switch to posgres, this will be a check for a unique constraint on the name column."""
@@ -206,7 +206,7 @@ def clear_dependencies_store():
 
 def update_dependency_vulnerability(name: str, version: str, is_vulnerable: bool, vulnerability_ids: list):
     """
-    Updates the vulnerability status and IDs for all dependencies matching the given name and version.
+    Updates the vulnerability status and ids for all dependencies matching the given name and version.
     """
     name = name.lower()
     for dep in _dependencies:

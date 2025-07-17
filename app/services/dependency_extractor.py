@@ -20,9 +20,26 @@ async def extract_all_dependencies(requirements_content: str) -> str:
         req_file = os.path.join(temp_dir, "requirements.txt")
         output_file = os.path.join(temp_dir, "requirements.lock")
         
-        # Write requirements.txt
+        # Preprocess requirements content to filter out file reference lines
+        filtered_lines = []
+        for line in requirements_content.splitlines():
+            line = line.strip()
+            # Skip empty lines, comments, and file reference lines
+            if (line and 
+                not line.startswith("#") and 
+                not line.startswith("-r") and
+                not line.startswith("--requirement") and
+                not line.startswith("-c") and
+                not line.startswith("--constraint") and
+                not line.startswith("-e") and
+                not line.startswith("--editable")):
+                filtered_lines.append(line)
+        
+        filtered_content = "\n".join(filtered_lines)
+        
+        # Write filtered requirements.txt
         with open(req_file, "w") as f:
-            f.write(requirements_content)
+            f.write(filtered_content)
 
         # Cross-platform Python executable
         python_exe = sys.executable
