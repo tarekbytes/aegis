@@ -12,7 +12,11 @@ from contextlib import asynccontextmanager
 async def lifespan(app):
     print("Starting scheduler...")
     scheduler.start()
-    yield
+    try:
+        yield
+    finally:
+        print("Shutting down scheduler...")
+        scheduler.shutdown()
 
 app = FastAPI(lifespan=lifespan)
 
