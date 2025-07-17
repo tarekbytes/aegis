@@ -223,6 +223,6 @@ async def get_project_dependencies(project_id: int):
         if not any(p["id"] == project_id for p in projects):
             raise HTTPException(
                 status_code=HTTP_404_NOT_FOUND,
-                detail=f"Project with ID {project_id} not found"
+                detail=f"Project with id {project_id} not found"
             )
     return [Dependency(**d) for d in dependencies_data]
