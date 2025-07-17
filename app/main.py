@@ -5,8 +5,20 @@ from starlette.status import HTTP_409_CONFLICT
 from app.exceptions import ConflictError
 from app.models.error import Error
 from app.routers import projects, dependencies
+from app.services import scheduler
+from contextlib import asynccontextmanager
 
-app: FastAPI = FastAPI()
+@asynccontextmanager
+async def lifespan(app):
+    print("Starting scheduler...")
+    scheduler.start()
+    try:
+        yield
+    finally:
+        print("Shutting down scheduler...")
+        scheduler.shutdown()
+
+app = FastAPI(lifespan=lifespan)
 
 @app.exception_handler(ConflictError)
 async def conflict_exception_handler(request: Request, exc: ConflictError):

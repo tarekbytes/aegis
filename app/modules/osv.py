@@ -1,9 +1,8 @@
 import httpx
 from typing import List, Dict, Any
-import asyncio
 import time
 from packaging.requirements import Requirement
-from app.models import OSVBatchResponse, OSVVulnerability
+from app.models import OSVBatchResponse, OSVVulnerability, QueryVulnerabilities
 from app.services.cache import cache, CacheEntry
 
 OSV_API_URL = "https://api.osv.dev/v1/querybatch"
@@ -100,7 +99,12 @@ async def query_osv_batch(requirements: List[Requirement]) -> OSVBatchResponse:
             ttl = _calculate_ttl(vulns)
             expiry = time.time() + ttl
             await cache.set(key, CacheEntry(status='ready', data=res, expiry_timestamp=expiry))
-            await cache.set(key + ':refresh', None)
+            # Clear the refresh entry
+            await cache._lock.acquire()
+            try:
+                cache._store.pop(key + ':refresh', None)
+            finally:
+                cache._lock.release()
             results[key] = res
 
     # Phase 3: Wait for in-flight fetches
@@ -109,6 +113,6 @@ async def query_osv_batch(requirements: List[Requirement]) -> OSVBatchResponse:
         if data is not None:
             results[key] = data
         else:
-            results[key] = type('Dummy', (), {'vulns': []})()
+            results[key] = QueryVulnerabilities(vulns=[])
 
     return OSVBatchResponse(results=[results[k] for k in dep_keys])

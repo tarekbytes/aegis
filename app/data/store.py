@@ -134,3 +134,14 @@ def clear_dependencies_store():
     global _next_dependency_id
     _dependencies.clear()
     _next_dependency_id = 1 
+
+
+def update_dependency_vulnerability(name: str, version: str, is_vulnerable: bool, vulnerability_ids: list):
+    """
+    Updates the vulnerability status and IDs for all dependencies matching the given name and version.
+    """
+    name = name.lower()
+    for dep in _dependencies:
+        if dep["name"] == name and dep["version"] == version:
+            dep["is_vulnerable"] = is_vulnerable
+            dep["vulnerability_ids"] = vulnerability_ids

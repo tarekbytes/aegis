@@ -37,4 +37,4 @@ class InMemoryAsyncCache:
             await asyncio.sleep(poll_interval)
         return None
 
-cache = InMemoryAsyncCache() 
+cache = InMemoryAsyncCache()
