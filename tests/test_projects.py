@@ -579,9 +579,20 @@ flask==2.0.1
 requests==2.25.1
 """
     
-    # Mock the dependency extractor to return the same content
+    # Mock the dependency extractor to return expanded dependencies
+    expanded_content = """flask==2.0.1
+Werkzeug==2.0.1
+requests==2.25.1
+urllib3==1.26.5
+certifi==2020.12.5
+charset-normalizer==2.0.0
+idna==2.10
+pip==21.1.1
+setuptools==56.0.0
+"""
+    
     with patch('app.routers.projects.extract_all_dependencies') as mock_extract:
-        mock_extract.return_value = requirements_content
+        mock_extract.return_value = expanded_content
         
         # Create a mock file
         mock_file = AsyncMock()
@@ -589,14 +600,24 @@ requests==2.25.1
         
         requirements, validation_errors = await get_validated_requirements(mock_file)
         
-        # Should have no validation errors for pip syntax
+        # Should have no validation errors for expanded dependencies
         assert len(validation_errors) == 0
-        # Should have 2 valid requirements
-        assert len(requirements) == 2
+        # Should have 7 valid requirements (excluding pip and setuptools)
+        assert len(requirements) == 7
         assert requirements[0].name == "flask"
         assert requirements[0].specifier == SpecifierSet("==2.0.1")
-        assert requirements[1].name == "requests"
-        assert requirements[1].specifier == SpecifierSet("==2.25.1")
+        assert requirements[1].name == "Werkzeug"
+        assert requirements[1].specifier == SpecifierSet("==2.0.1")
+        assert requirements[2].name == "requests"
+        assert requirements[2].specifier == SpecifierSet("==2.25.1")
+        assert requirements[3].name == "urllib3"
+        assert requirements[3].specifier == SpecifierSet("==1.26.5")
+        assert requirements[4].name == "certifi"
+        assert requirements[4].specifier == SpecifierSet("==2020.12.5")
+        assert requirements[5].name == "charset-normalizer"
+        assert requirements[5].specifier == SpecifierSet("==2.0.0")
+        assert requirements[6].name == "idna"
+        assert requirements[6].specifier == SpecifierSet("==2.10")
 
 
 def test_get_project_dependencies_empty_list(monkeypatch):
