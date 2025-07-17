@@ -1,6 +1,5 @@
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from packaging.requirements import Requirement
 from app.modules import osv
 from app.models import OSVVulnerability, QueryVulnerabilities, OSVBatchResponse
@@ -51,6 +50,10 @@ async def test_query_osv_batch_cache_miss(monkeypatch):
     cache_mock.set = AsyncMock()
     cache_mock.wait_for_ready = AsyncMock(return_value=None)
     monkeypatch.setattr(osv, 'cache', cache_mock)
+    cache_mock._lock = MagicMock()
+    async def async_acquire(): pass
+    cache_mock._lock.acquire = AsyncMock(side_effect=async_acquire)
+    cache_mock._lock.release = MagicMock()
     # Patch httpx
     vuln = make_vuln(top_sev='HIGH')
     qv = QueryVulnerabilities(vulns=[vuln])
@@ -97,6 +100,10 @@ async def test_query_osv_batch_cache_hit_expired(monkeypatch):
     cache_mock.set = AsyncMock()
     cache_mock.wait_for_ready = AsyncMock()
     monkeypatch.setattr(osv, 'cache', cache_mock)
+    cache_mock._lock = MagicMock()
+    async def async_acquire(): pass
+    cache_mock._lock.acquire = AsyncMock(side_effect=async_acquire)
+    cache_mock._lock.release = MagicMock()
     # Patch httpx to not actually call
     class FakeResp:
         def raise_for_status(self): pass

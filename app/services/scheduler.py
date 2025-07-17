@@ -5,9 +5,9 @@ from packaging.requirements import Requirement
 
 from app.data import store
 from app.models.osv import OSVBatchResponse
-from app.modules.osv import query_osv_batch
+from app.modules.osv import query_osv_batch, _calculate_ttl
 from app.services.cache import cache, CacheEntry
-
+from app.modules.osv import TTL_CRITICAL
 
 scheduler = AsyncIOScheduler(timezone=utc)
 
@@ -47,11 +47,13 @@ async def scheduled_vulnerability_scan():
         vuln_ids = [v.id for v in query_vulns.vulns] if has_vulns else []
 
         # Update cache with new data and expiry
-        # 1 hour for vulnerable deps, 24 hours for clean ones
-        ttl = 3600 if has_vulns else 24 * 3600
+        ttl = _calculate_ttl(query_vulns.vulns)
         new_entry = CacheEntry(status='ready', data=query_vulns, expiry_timestamp=time.time() + ttl)
         await cache.set(cache_key, new_entry)
-        print(f"Updated cache for {name}=={version}")
+        print(f"Updated cache for {name}=={version} (TTL: {ttl} seconds)")
+        # Properly clear the refresh entry
+        async with cache._lock:
+            cache._store.pop(cache_key + ':refresh', None)
 
         # Update dependency records in the store
         store.update_dependency_vulnerability(name, version, has_vulns, vuln_ids)
@@ -60,11 +62,11 @@ async def scheduled_vulnerability_scan():
 
 
 def start():
-    """Starts the scheduler and adds the vulnerability scan job."""
+    print("Adding scheduled_vulnerability_scan job to scheduler")
     scheduler.add_job(
         scheduled_vulnerability_scan,
         'interval',
-        hours=1,
+        seconds= TTL_CRITICAL,
         id='scheduled_vulnerability_scan',
         replace_existing=True
     )
