@@ -145,4 +145,4 @@ def test_scheduler_start_and_shutdown():
 
         # Test shutdown
         scheduler_service.shutdown()
-        mock_shutdown.assert_called_once() 
+        mock_shutdown.assert_called_once()

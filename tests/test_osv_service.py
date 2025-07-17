@@ -146,4 +146,4 @@ async def test_query_osv_batch_no_vulns(monkeypatch):
     cache_mock.wait_for_ready = AsyncMock()
     monkeypatch.setattr(osv, 'cache', cache_mock)
     out = await osv.query_osv_batch([req])
-    assert out.results[0].vulns == [] 
+    assert out.results[0].vulns == []
