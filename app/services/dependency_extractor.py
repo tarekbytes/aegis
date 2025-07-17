@@ -31,7 +31,11 @@ async def extract_all_dependencies(requirements_content: str) -> str:
         if proc.returncode != 0:
             raise RuntimeError("Failed to create virtualenv")
 
-        pip_path = os.path.join(venv_dir, "bin", "pip")
+        # Cross-platform pip path
+        if os.name == 'nt':  # Windows
+            pip_path = os.path.join(venv_dir, "Scripts", "pip.exe")
+        else:  # Unix/Linux/macOS
+            pip_path = os.path.join(venv_dir, "bin", "pip")
 
         # Upgrade pip
         proc = await asyncio.create_subprocess_exec(

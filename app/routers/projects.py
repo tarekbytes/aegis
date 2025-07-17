@@ -41,10 +41,13 @@ async def get_validated_requirements(
         # First, expand dependencies using the extractor
         expanded_content = await extract_all_dependencies(original_content)
         
-        # Then validate the expanded requirements
+        # Validate the expanded requirements
         for i, line in enumerate(expanded_content.splitlines()):
             line = line.strip()
             if not line or line.startswith("#"):
+                continue
+            # Ignore file references and other non-package requirements
+            if line.startswith("-r ") or line.startswith("--requirement ") or line.startswith("-f ") or line.startswith("--find-links "):
                 continue
             try:
                 req = Requirement(line)

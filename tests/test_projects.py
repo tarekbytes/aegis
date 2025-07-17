@@ -61,10 +61,10 @@ async def test_valid_requirements_file(monkeypatch):
 @pytest.mark.asyncio
 async def test_invalid_requirements_file_raises_exception(monkeypatch):
     # Mock the dependency extractor to return the same content
-    mock_extractor = AsyncMock(return_value="requests==2.28.1\n-r other.txt\n")
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n@invalid-package-name\n")
     monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
     
-    mock_upload_file = create_mock_upload_file("requests==2.28.1\n-r other.txt")
+    mock_upload_file = create_mock_upload_file("requests==2.28.1\n@invalid-package-name")
     requirements, errors = await get_validated_requirements(mock_upload_file)
     assert len(requirements) == 1
     assert len(errors) == 1
@@ -146,13 +146,13 @@ def test_create_project_with_vulns(monkeypatch):
 def test_create_project_invalid_requirements(monkeypatch):
     """Tests that creating a project with an invalid requirements file returns a 422 error."""
     # Mock the dependency extractor to return invalid content
-    mock_extractor = AsyncMock(return_value="requests==2.28.1\n-r other.txt\n")
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n@invalid-package-name\n")
     monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
     
     response = client.post(
         "/projects/",
         data={"name": "Invalid Project"},
-        files={"file": ("requirements.txt", b"requests==2.28.1\n-r other.txt", "text/plain")},
+        files={"file": ("requirements.txt", b"requests==2.28.1\n@invalid-package-name", "text/plain")},
     )
     assert response.status_code == HTTP_422_UNPROCESSABLE_ENTITY
     error = response.json()
@@ -390,9 +390,9 @@ def test_update_project_not_found(monkeypatch):
 def test_update_project_invalid_requirements(monkeypatch):
     """Test updating a project with invalid requirements returns 422."""
     # Mock the dependency extractor to return invalid content
-    mock_extractor = AsyncMock(return_value="requests==2.28.1\n-r other.txt\n")
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n@invalid-package-name\n")
     monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
-    
+
     mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_query = AsyncMock(return_value=mock_osv_response)
     monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
@@ -409,7 +409,7 @@ def test_update_project_invalid_requirements(monkeypatch):
     update_resp = client.put(
         f"/projects/{project_id}",
         data={"name": "Alpha"},
-        files={"file": ("requirements.txt", b"requests==2.28.1\n-r other.txt", "text/plain")},
+        files={"file": ("requirements.txt", b"requests==2.28.1\n@invalid-package-name", "text/plain")},
     )
     assert update_resp.status_code == HTTP_422_UNPROCESSABLE_ENTITY
     assert "is not a valid requirement" in update_resp.json()["detail"]

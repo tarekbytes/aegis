@@ -334,4 +334,42 @@ class TestDependencyExtractor:
             result = await extract_all_dependencies(requirements)
             
             assert "requests==2.31.0" in result
-            assert result.endswith("\n")  # Should add newline if missing 
+            assert result.endswith("\n")  # Should add newline if missing
+
+    @pytest.mark.asyncio
+    async def test_windows_pip_path(self):
+        """Test that the function uses correct pip path on Windows."""
+        requirements = "requests==2.31.0"
+        
+        with patch('os.name', 'nt'), patch('asyncio.create_subprocess_exec') as mock_subprocess:
+            mock_proc = AsyncMock()
+            mock_proc.returncode = 0
+            mock_proc.communicate = AsyncMock(return_value=(b"", b""))
+            mock_subprocess.return_value = mock_proc
+            
+            # Mock pip freeze output
+            mock_proc.communicate.side_effect = [
+                (b"", b""),  # venv creation
+                (b"", b""),  # pip upgrade
+                (b"", b""),  # pip install
+                (b"certifi==2023.7.22\ncharset-normalizer==3.2.0\nidna==3.4\nrequests==2.31.0\nurllib3==2.0.4\n", b"")  # pip freeze
+            ]
+            
+            result = await extract_all_dependencies(requirements)
+            
+            # Verify that the correct Windows pip path was used
+            # Check that pip calls use the Windows Scripts/pip.exe path
+            pip_calls = [call for call in mock_subprocess.call_args_list if 'pip' in str(call)]
+            assert len(pip_calls) >= 3  # pip upgrade, pip install, pip freeze
+            
+            # Verify that the pip path contains Scripts/pip.exe (Windows path)
+            for call in pip_calls:
+                args = call[0]  # Get the arguments
+                if 'pip' in str(args):
+                    # The first argument should be the pip path
+                    pip_path = args[0]
+                    assert 'Scripts' in pip_path
+                    assert 'pip.exe' in pip_path
+            
+            assert "requests==2.31.0" in result
+            assert result.endswith("\n") 
