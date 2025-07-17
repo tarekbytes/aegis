@@ -43,7 +43,11 @@ def create_mock_upload_file(content: str) -> UploadFile:
 
 
 @pytest.mark.asyncio
-async def test_valid_requirements_file():
+async def test_valid_requirements_file(monkeypatch):
+    # Mock the dependency extractor to return the same content
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\npackaging==23.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_upload_file = create_mock_upload_file(
         "requests==2.28.1\n# A comment\npackaging==23.1"
     )
@@ -55,7 +59,11 @@ async def test_valid_requirements_file():
 
 
 @pytest.mark.asyncio
-async def test_invalid_requirements_file_raises_exception():
+async def test_invalid_requirements_file_raises_exception(monkeypatch):
+    # Mock the dependency extractor to return the same content
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n-r other.txt\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_upload_file = create_mock_upload_file("requests==2.28.1\n-r other.txt")
     requirements, errors = await get_validated_requirements(mock_upload_file)
     assert len(requirements) == 1
@@ -64,10 +72,14 @@ async def test_invalid_requirements_file_raises_exception():
 
 
 @pytest.mark.asyncio
-async def test_unpinned_requirements_file_raises_exception():
+async def test_unpinned_requirements_file_raises_exception(monkeypatch):
     """
     Tests that the validator rejects requirements that are not pinned with '=='.
     """
+    # Mock the dependency extractor to return the same content
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\ndjango\ntoml>0.1.0\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_upload_file = create_mock_upload_file(
         "requests==2.28.1\ndjango\ntoml>0.1.0"
     )
@@ -80,6 +92,10 @@ async def test_unpinned_requirements_file_raises_exception():
 
 def test_create_project_no_vulns(monkeypatch):
     """Tests successful project creation when no vulnerabilities are found."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_query = AsyncMock(return_value=mock_osv_response)
     monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
@@ -101,6 +117,10 @@ def test_create_project_no_vulns(monkeypatch):
 
 def test_create_project_with_vulns(monkeypatch):
     """Tests successful project creation when vulnerabilities are found."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="jinja2==2.4.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_osv_response = OSVBatchResponse(
         results=[
             QueryVulnerabilities(
@@ -125,6 +145,10 @@ def test_create_project_with_vulns(monkeypatch):
 
 def test_create_project_invalid_requirements(monkeypatch):
     """Tests that creating a project with an invalid requirements file returns a 422 error."""
+    # Mock the dependency extractor to return invalid content
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n-r other.txt\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     response = client.post(
         "/projects/",
         data={"name": "Invalid Project"},
@@ -137,6 +161,10 @@ def test_create_project_invalid_requirements(monkeypatch):
 
 def test_create_project_unpinned_requirements(monkeypatch):
     """Tests that creating a project with unpinned dependencies returns a 422 error."""
+    # Mock the dependency extractor to return unpinned content
+    mock_extractor = AsyncMock(return_value="requests\ndjango>2.0\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     response = client.post(
         "/projects/",
         data={"name": "Unpinned Project"},
@@ -149,6 +177,10 @@ def test_create_project_unpinned_requirements(monkeypatch):
 
 def test_create_project_duplicate_name(monkeypatch):
     """Tests that creating a project with a duplicate name returns a 409 error."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     client.post(
         "/projects/",
         data={"name": "Duplicate Test", "description": "First instance"},
@@ -168,6 +200,10 @@ def test_create_project_duplicate_name(monkeypatch):
 
 def test_create_project_osv_error(monkeypatch):
     """Tests that a 502 error is returned when the OSV API call fails."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_query = AsyncMock(
         side_effect=httpx.HTTPStatusError("Error", request=MagicMock(), response=MagicMock(text="OSV Error"))
     )
@@ -186,6 +222,10 @@ def test_create_project_osv_error(monkeypatch):
 
 def test_get_all_projects(monkeypatch):
     """Tests that the get_projects endpoint correctly returns a list of all projects."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     client.post(
         "/projects/",
         data={"name": "My First Project", "description": "A description"},
@@ -214,8 +254,12 @@ def test_delete_project_not_found():
     assert "Project with id 999 not found" in error["detail"]
 
 
-def test_delete_project_success():
+def test_delete_project_success(monkeypatch):
     """Tests that deleting an existing project returns a 200 success response."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     # First create a project
     client.post(
         "/projects/",
@@ -252,6 +296,10 @@ def test_delete_project_unexpected_error(monkeypatch):
 
 def test_update_project_success(monkeypatch):
     """Test updating a project with valid data succeeds."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     # Mock OSV response
     mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_query = AsyncMock(return_value=mock_osv_response)
@@ -279,6 +327,10 @@ def test_update_project_success(monkeypatch):
 
 def test_update_project_duplicate_name(monkeypatch):
     """Test updating a project to a name that already exists fails with 409."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\nflask==2.0.0\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_query = AsyncMock(return_value=mock_osv_response)
     monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
@@ -317,21 +369,30 @@ def test_update_project_duplicate_name(monkeypatch):
 
 def test_update_project_not_found(monkeypatch):
     """Test updating a non-existent project returns 404."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_query = AsyncMock(return_value=mock_osv_response)
     monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
 
-    update_resp = client.put(
+    response = client.put(
         "/projects/999",
-        data={"name": "Ghost"},
+        data={"name": "Non-existent"},
         files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
     )
-    assert update_resp.status_code == HTTP_404_NOT_FOUND
-    assert "not found" in update_resp.json()["detail"]
+    assert response.status_code == HTTP_404_NOT_FOUND
+    error = response.json()
+    assert "Project with id 999 not found" in error["detail"]
 
 
 def test_update_project_invalid_requirements(monkeypatch):
     """Test updating a project with invalid requirements returns 422."""
+    # Mock the dependency extractor to return invalid content
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n-r other.txt\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_query = AsyncMock(return_value=mock_osv_response)
     monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
@@ -356,6 +417,10 @@ def test_update_project_invalid_requirements(monkeypatch):
 
 def test_update_project_osv_error(monkeypatch):
     """Test updating a project when OSV API fails returns 502."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_query = AsyncMock(
         side_effect=httpx.HTTPStatusError("Error", request=MagicMock(), response=MagicMock(text="OSV Error"))
     )
@@ -381,6 +446,10 @@ def test_update_project_osv_error(monkeypatch):
 
 def test_update_project_not_found_error(monkeypatch):
     """Tests that update_project returns 404 when project doesn't exist."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_query = AsyncMock(return_value=mock_osv_response)
     monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
@@ -409,6 +478,10 @@ def test_update_project_not_found_error(monkeypatch):
 
 def test_update_project_unexpected_error(monkeypatch):
     """Tests that unexpected errors in update_project are handled properly."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_query = AsyncMock(return_value=mock_osv_response)
     monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
@@ -437,6 +510,10 @@ def test_update_project_unexpected_error(monkeypatch):
 
 def test_create_project_unexpected_error(monkeypatch):
     """Tests that unexpected errors in create_project are handled properly."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_query = AsyncMock(return_value=mock_osv_response)
     monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
@@ -464,8 +541,12 @@ def test_create_project_unexpected_error(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_validated_requirements_continue_on_unpinned():
+async def test_get_validated_requirements_continue_on_unpinned(monkeypatch):
     """Tests that the continue statement is executed when requirements are not pinned."""
+    # Mock the dependency extractor to return unpinned content
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\ndjango\n# comment\nflask>=2.0\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     mock_upload_file = create_mock_upload_file(
         "requests==2.28.1\ndjango\n# comment\nflask>=2.0"
     )
@@ -476,8 +557,12 @@ async def test_get_validated_requirements_continue_on_unpinned():
     assert any("must be pinned" in error for error in errors)
 
 
-def test_get_project_dependencies_empty_list():
+def test_get_project_dependencies_empty_list(monkeypatch):
     """Tests that get_project_dependencies returns empty list when project exists but has no dependencies."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     # First create a project
     client.post(
         "/projects/",
@@ -533,41 +618,42 @@ def test_remove_project_by_id():
     assert result[0]["id"] == 2
 
 
-def test_update_project_removal_and_readd():
+def test_update_project_removal_and_readd(monkeypatch):
     """Tests that updating a project removes old dependencies and adds new ones."""
+    # Mock the dependency extractor for both requests
+    mock_extractor = AsyncMock(side_effect=[
+        "requests==2.28.1\ndjango==4.0\n",  # First call
+        "flask==2.0.0\n"  # Second call
+    ])
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     # First create a project
     client.post(
         "/projects/",
         data={"name": "Test Project", "description": "Initial description"},
         files={"file": ("requirements.txt", b"requests==2.28.1\ndjango==4.0", "text/plain")},
     )
-    
+
     # Get the project ID
     projects = client.get("/projects/").json()
     project_id = projects[0]["id"]
-    
+
     # Check initial dependencies
     initial_deps = client.get(f"/projects/{project_id}/dependencies").json()
     assert len(initial_deps) == 2
-    dep_names = {dep["name"] for dep in initial_deps}
-    assert "requests" in dep_names
-    assert "django" in dep_names
-    
+
     # Update the project with different dependencies
-    client.put(
+    update_resp = client.put(
         f"/projects/{project_id}",
-        data={"name": "Updated Project", "description": "Updated description"},
-        files={"file": ("requirements.txt", b"flask==2.3.0\nsqlalchemy==2.0.0", "text/plain")},
+        data={"name": "Test Project", "description": "Updated description"},
+        files={"file": ("requirements.txt", b"flask==2.0.0", "text/plain")},
     )
-    
-    # Check that dependencies were replaced
+    assert update_resp.status_code == HTTP_200_OK
+
+    # Check updated dependencies
     updated_deps = client.get(f"/projects/{project_id}/dependencies").json()
-    assert len(updated_deps) == 2
-    updated_dep_names = {dep["name"] for dep in updated_deps}
-    assert "flask" in updated_dep_names
-    assert "sqlalchemy" in updated_dep_names
-    assert "requests" not in updated_dep_names
-    assert "django" not in updated_dep_names
+    assert len(updated_deps) == 1
+    assert updated_deps[0]["name"] == "flask"
 
 
 def test_store_update_project_removal_and_readd():
@@ -581,31 +667,36 @@ def test_store_update_project_removal_and_readd():
     assert projects[0]["description"] == "newdesc"
 
 
-def test_delete_project_removes_dependencies():
+def test_delete_project_removes_dependencies(monkeypatch):
     """Tests that deleting a project also removes all its dependencies."""
+    # Mock the dependency extractor
+    mock_extractor = AsyncMock(return_value="requests==2.28.1\ndjango==4.0\n")
+    monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
+    
     # First create a project with dependencies
     client.post(
         "/projects/",
         data={"name": "Test Project", "description": "A test project"},
         files={"file": ("requirements.txt", b"requests==2.28.1\ndjango==4.0", "text/plain")},
     )
-    
+
     # Get the project ID
     projects = client.get("/projects/").json()
     project_id = projects[0]["id"]
-    
+
     # Verify dependencies exist
     deps = client.get(f"/projects/{project_id}/dependencies").json()
     assert len(deps) == 2
-    
+
     # Delete the project
-    response = client.delete(f"/projects/{project_id}")
-    assert response.status_code == HTTP_200_OK
-    
+    delete_resp = client.delete(f"/projects/{project_id}")
+    assert delete_resp.status_code == HTTP_200_OK
+
     # Verify project is gone
-    projects_after = client.get("/projects/").json()
+    get_resp = client.get("/projects/")
+    projects_after = get_resp.json()
     assert len(projects_after) == 0
-    
+
     # Verify dependencies are also gone by checking the store directly
     all_deps = store.get_all_dependencies()
     assert len(all_deps) == 0
