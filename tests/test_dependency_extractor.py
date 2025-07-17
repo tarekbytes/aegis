@@ -372,4 +372,23 @@ class TestDependencyExtractor:
                     assert 'pip.exe' in pip_path
             
             assert "requests==2.31.0" in result
-            assert result.endswith("\n") 
+            assert result.endswith("\n")
+
+    @pytest.mark.asyncio
+    async def test_pip_upgrade_failure(self):
+        """Test that pip upgrade failures are properly handled."""
+        with patch('asyncio.create_subprocess_exec') as mock_subprocess:
+            # Mock successful venv creation
+            mock_venv_proc = AsyncMock()
+            mock_venv_proc.communicate.return_value = (b"", b"")
+            mock_venv_proc.returncode = 0
+            
+            # Mock failed pip upgrade
+            mock_pip_upgrade_proc = AsyncMock()
+            mock_pip_upgrade_proc.communicate.return_value = (b"", b"Permission denied")
+            mock_pip_upgrade_proc.returncode = 1
+            
+            mock_subprocess.side_effect = [mock_venv_proc, mock_pip_upgrade_proc]
+            
+            with pytest.raises(RuntimeError, match="Failed to upgrade pip: Permission denied"):
+                await extract_all_dependencies("flask==2.0.1")

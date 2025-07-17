@@ -49,7 +49,9 @@ async def extract_all_dependencies(requirements_content: str) -> str:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        await proc.communicate()
+        out, err = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(f"Failed to upgrade pip: {err.decode()}")
 
         # Install requirements
         proc = await asyncio.create_subprocess_exec(
