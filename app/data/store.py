@@ -74,6 +74,9 @@ def delete_project(project_id: int) -> int:
 
     _projects = remove_project_by_id(project_id)
     
+    # Also delete all dependencies associated with this project
+    delete_dependencies_by_project_id(project_id)
+    
     return project_id
 
 def remove_project_by_id(target_id: int) -> List[Dict]:
@@ -98,6 +101,20 @@ def add_dependencies(project_id: int, dependencies: List[Dict]):
         }
         _dependencies.append(dep_data)
         _next_dependency_id += 1
+
+
+def update_dependencies(project_id: int, dependencies: List[Dict]):
+    """Updates dependencies for a project by first removing existing ones and then adding new ones."""
+    # First, delete all existing dependencies for this project
+    delete_dependencies_by_project_id(project_id)
+    # Then add the new dependencies
+    add_dependencies(project_id, dependencies)
+
+
+def delete_dependencies_by_project_id(project_id: int):
+    """Deletes all dependencies for a given project_id."""
+    global _dependencies
+    _dependencies = [dep for dep in _dependencies if dep["project_id"] != project_id]
 
 
 def get_dependencies_by_project_id(project_id: int) -> List[Dict]:

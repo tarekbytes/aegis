@@ -143,7 +143,7 @@ async def update_project(
                 }
             )
 
-        store.add_dependencies(project_id, dependencies_to_store)
+        store.update_dependencies(project_id, dependencies_to_store)
         is_vulnerable = any(d["is_vulnerable"] for d in dependencies_to_store)
 
         return ProjectResponse(

@@ -534,7 +534,44 @@ def test_remove_project_by_id():
 
 
 def test_update_project_removal_and_readd():
-    """Test update_project removes and re-adds the project with updated data."""
+    """Tests that updating a project removes old dependencies and adds new ones."""
+    # First create a project
+    client.post(
+        "/projects/",
+        data={"name": "Test Project", "description": "Initial description"},
+        files={"file": ("requirements.txt", b"requests==2.28.1\ndjango==4.0", "text/plain")},
+    )
+    
+    # Get the project ID
+    projects = client.get("/projects/").json()
+    project_id = projects[0]["id"]
+    
+    # Check initial dependencies
+    initial_deps = client.get(f"/projects/{project_id}/dependencies").json()
+    assert len(initial_deps) == 2
+    dep_names = {dep["name"] for dep in initial_deps}
+    assert "requests" in dep_names
+    assert "django" in dep_names
+    
+    # Update the project with different dependencies
+    client.put(
+        f"/projects/{project_id}",
+        data={"name": "Updated Project", "description": "Updated description"},
+        files={"file": ("requirements.txt", b"flask==2.3.0\nsqlalchemy==2.0.0", "text/plain")},
+    )
+    
+    # Check that dependencies were replaced
+    updated_deps = client.get(f"/projects/{project_id}/dependencies").json()
+    assert len(updated_deps) == 2
+    updated_dep_names = {dep["name"] for dep in updated_deps}
+    assert "flask" in updated_dep_names
+    assert "sqlalchemy" in updated_dep_names
+    assert "requests" not in updated_dep_names
+    assert "django" not in updated_dep_names
+
+
+def test_store_update_project_removal_and_readd():
+    """Test store.update_project removes and re-adds the project with updated data."""
     store.clear_projects_store()
     pid = store.add_project("OldName", "desc")
     store.update_project(pid, "NewName", "newdesc")
@@ -542,6 +579,36 @@ def test_update_project_removal_and_readd():
     assert len(projects) == 1
     assert projects[0]["name"] == "NewName"
     assert projects[0]["description"] == "newdesc"
+
+
+def test_delete_project_removes_dependencies():
+    """Tests that deleting a project also removes all its dependencies."""
+    # First create a project with dependencies
+    client.post(
+        "/projects/",
+        data={"name": "Test Project", "description": "A test project"},
+        files={"file": ("requirements.txt", b"requests==2.28.1\ndjango==4.0", "text/plain")},
+    )
+    
+    # Get the project ID
+    projects = client.get("/projects/").json()
+    project_id = projects[0]["id"]
+    
+    # Verify dependencies exist
+    deps = client.get(f"/projects/{project_id}/dependencies").json()
+    assert len(deps) == 2
+    
+    # Delete the project
+    response = client.delete(f"/projects/{project_id}")
+    assert response.status_code == HTTP_200_OK
+    
+    # Verify project is gone
+    projects_after = client.get("/projects/").json()
+    assert len(projects_after) == 0
+    
+    # Verify dependencies are also gone by checking the store directly
+    all_deps = store.get_all_dependencies()
+    assert len(all_deps) == 0
 
 
 
