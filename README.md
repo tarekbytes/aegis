@@ -23,18 +23,16 @@ A brief overview of the key components of the project:
 aegis/
 ├── app/
 │   ├── models/
-│   │   └── project.py       # Pydantic models
 │   ├── routers/
-│   │   └── projects.py      # Project-related API routes
-│   └── main.py              # Main FastAPI application
+│   ├── services/
+│   ├── data/
+│   └── main.py
 ├── db/
 │   ├── docker/
-│   │   └── docker-compose.yml # Docker Compose for the database
-│   ├── README.md            # Database setup instructions
-│   └── init.sql             # PostgreSQL schema initialization
+│   └── (other db files)
 ├── tests/
-│   └── test_projects.py     # Unit tests for the projects router
-└── requirements.txt         # Python dependencies
+├── mock_osv/
+└── requirements.txt
 ```
 
 ## 🚀 Getting Started
@@ -47,7 +45,9 @@ Follow these instructions to get the project up and running on your local machin
 *   Docker and Docker Compose
 *   A Python virtual environment tool (e.g., `venv`)
 
-### 1. Database Setup
+### 1. Database Setup (Skippable)
+
+> **Note:** For the time being, the application uses in-memory storage for all data. This means that any data you add will be lost when the app is restarted. Persistent storage via PostgreSQL is planned for future releases.
 
 The project uses a PostgreSQL database running in a Docker container. For detailed instructions on setting up and starting the database, please refer to the `db/README.md` file.
 
@@ -87,7 +87,54 @@ The `--reload` flag enables auto-reloading for development, so the server will r
 
 The API will be available at `http://localhost:8000`, and the interactive documentation (Swagger UI) can be accessed at `http://localhost:8000/docs`.
 
-## ✅ Running Tests
+## 🧪 Using the Mock OSV Server for Local Testing
+
+For local development and testing, you can use the included `mock_osv` FastAPI service to simulate responses from osv.dev. This allows you to test vulnerability scanning without making real network calls.
+
+**To run the mock OSV server:**
+```bash
+uvicorn mock_osv.main:app --reload --port 8001
+```
+
+**To point the main app to the mock server:**
+Set the `OSV_API_URL` in your environment or configuration to:
+```
+http://localhost:8001/v1/querybatch
+```
+This will cause all vulnerability queries to go to your local mock server.
+
+## 🧹 Code Quality: Ruff and Pre-commit Hooks
+
+We use [Ruff](https://github.com/astral-sh/ruff) for fast Python linting and code quality checks, and [pre-commit](https://pre-commit.com/) to enforce these checks before every commit.
+
+Our `.pre-commit-config.yaml` is configured to run Ruff on all staged Python files before each commit. This ensures code style and quality are maintained automatically.
+
+**Example `.pre-commit-config.yaml`:**
+```yaml
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff
+```
+
+**To set up:**
+1. Install ruff and pre-commit:
+    ```bash
+    pip install ruff pre-commit
+    ```
+2. Install the pre-commit hook:
+    ```bash
+    pre-commit install
+    ```
+Now, every time you commit, Ruff will automatically check your code for linting issues.
+
+If you want to run Ruff manually on all files:
+```bash
+ruff .
+```
+
+## ✅ Running Tests and Checking Coverage
 
 To validate the behavior of the application's components, you can run the automated test suite using `pytest` from the root of the project:
 
@@ -95,4 +142,8 @@ To validate the behavior of the application's components, you can run the automa
 pytest
 ```
 
-This will discover and run all the tests in the `tests/` directory.
+To check code coverage, run:
+```bash
+pytest --cov
+```
+This will display a coverage summary in the terminal. Aim for high coverage to ensure code reliability.
