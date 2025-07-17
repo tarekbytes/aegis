@@ -9,16 +9,16 @@ logger = logging.getLogger(__name__)
 
 async def extract_all_dependencies(requirements_content: str) -> str:
     """
-    Given requirements.txt content, returns a string with all installed packages (direct + transitive)
-    in pip freeze format. Fails if extraction fails.
+    Given requirements.txt content, returns a string with all resolved dependencies (direct + transitive)
+    using pip-compile. Fails if compilation fails.
     """
     logger.info(f"Starting dependency extraction for requirements: {requirements_content.strip()}")
     
     temp_dir = None
     try:
         temp_dir = tempfile.mkdtemp()
-        venv_dir = os.path.join(temp_dir, "venv")
         req_file = os.path.join(temp_dir, "requirements.txt")
+        output_file = os.path.join(temp_dir, "requirements.lock")
         
         # Write requirements.txt
         with open(req_file, "w") as f:
@@ -27,54 +27,34 @@ async def extract_all_dependencies(requirements_content: str) -> str:
         # Cross-platform Python executable
         python_exe = sys.executable
 
-        # Create venv
+        # Install pip-tools if not available
         proc = await asyncio.create_subprocess_exec(
-            python_exe, "-m", "venv", venv_dir,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.communicate()
-        if proc.returncode != 0:
-            raise RuntimeError("Failed to create virtualenv")
-
-        # Cross-platform pip path
-        if os.name == 'nt':  # Windows
-            pip_path = os.path.join(venv_dir, "Scripts", "pip.exe")
-        else:  # Unix/Linux/macOS
-            pip_path = os.path.join(venv_dir, "bin", "pip")
-
-        # Upgrade pip
-        proc = await asyncio.create_subprocess_exec(
-            pip_path, "install", "--upgrade", "pip",
+            python_exe, "-m", "pip", "install", "pip-tools",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         out, err = await proc.communicate()
         if proc.returncode != 0:
-            raise RuntimeError(f"Failed to upgrade pip: {err.decode()}")
+            raise RuntimeError(f"Failed to install pip-tools: {err.decode()}")
 
-        # Install requirements
+        # Run pip-compile to resolve dependencies
         proc = await asyncio.create_subprocess_exec(
-            pip_path, "install", "-r", req_file,
+            python_exe, "-m", "piptools", "compile", 
+            "--output-file", output_file,
+            req_file,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         out, err = await proc.communicate()
         if proc.returncode != 0:
-            raise RuntimeError(f"Failed to install requirements: {err.decode()}")
+            raise RuntimeError(f"pip-compile failed: {err.decode()}")
 
-        # Run pip freeze to get all installed packages
-        proc = await asyncio.create_subprocess_exec(
-            pip_path, "freeze",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        out, err = await proc.communicate()
-        if proc.returncode != 0:
-            raise RuntimeError(f"pip freeze failed: {err.decode()}")
-        freeze_output = out.decode()
-        logger.info(f"Dependency extraction completed. pip freeze output:\n{freeze_output.strip()}")
-        return freeze_output if freeze_output.endswith("\n") else freeze_output + "\n"
+        # Read the resolved requirements
+        with open(output_file, "r") as f:
+            resolved_content = f.read()
+        
+        logger.info(f"Dependency extraction completed. pip-compile output:\n{resolved_content.strip()}")
+        return resolved_content if resolved_content.endswith("\n") else resolved_content + "\n"
     finally:
         if temp_dir and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir) 

@@ -1,5 +1,5 @@
-from unittest.mock import AsyncMock
-from starlette.status import HTTP_200_OK, HTTP_404_NOT_FOUND
+from unittest.mock import AsyncMock, patch
+from starlette.status import HTTP_200_OK, HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 
 from fastapi.testclient import TestClient
 
@@ -135,3 +135,39 @@ def test_get_dependency_not_found():
     response = client.get("/dependencies/nonexistent-package")
     assert response.status_code == HTTP_404_NOT_FOUND
     assert response.json()["detail"] == "Dependency 'nonexistent-package' not found."
+
+
+def test_extract_dependencies_endpoint_success():
+    """
+    Tests that POST /dependencies/extract-dependencies successfully extracts
+    dependencies from a requirements.txt file.
+    """
+    with patch('app.routers.dependencies.extract_all_dependencies') as mock_extract:
+        mock_extract.return_value = "requests==2.31.0\ncertifi==2023.7.22\n"
+        
+        response = client.post(
+            "/dependencies/extract-dependencies",
+            files={"file": ("requirements.txt", b"requests==2.31.0", "text/plain")}
+        )
+        
+        assert response.status_code == HTTP_200_OK
+        assert response.text == "requests==2.31.0\ncertifi==2023.7.22\n"
+        mock_extract.assert_called_once_with("requests==2.31.0")
+
+
+def test_extract_dependencies_endpoint_failure():
+    """
+    Tests that POST /dependencies/extract-dependencies returns a 500 error
+    when dependency extraction fails.
+    """
+    with patch('app.routers.dependencies.extract_all_dependencies') as mock_extract:
+        mock_extract.side_effect = RuntimeError("Extraction failed")
+        
+        response = client.post(
+            "/dependencies/extract-dependencies",
+            files={"file": ("requirements.txt", b"requests==2.31.0", "text/plain")}
+        )
+        
+        assert response.status_code == HTTP_500_INTERNAL_SERVER_ERROR
+        assert response.json()["detail"] == "Dependency extraction failed: Extraction failed"
+        mock_extract.assert_called_once_with("requests==2.31.0")
