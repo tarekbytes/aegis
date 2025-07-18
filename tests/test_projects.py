@@ -30,6 +30,10 @@ from app.routers.projects import get_validated_requirements
 client = TestClient(app)
 
 
+class DatabaseError(RuntimeError):
+    """Custom exception to simulate database errors in tests."""
+
+
 @pytest.fixture(autouse=True)
 def clean_store():
     """A fixture that automatically clears the in-memory stores before each test."""
@@ -260,31 +264,31 @@ def test_delete_project_success(monkeypatch):
     # Mock the dependency extractor
     mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
     monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
-    
+
     # First create a project
     client.post(
         "/projects/",
         data={"name": "Project to Delete", "description": "A test project"},
         files={"file": ("requirements.txt", b"requests==2.28.1", "text/plain")},
     )
-    
-    # Now delete the project (assuming it has ID 1 since we clear the store before each test)
+
+    # Now delete the project
     response = client.delete("/projects/1")
     assert response.status_code == HTTP_200_OK
     result = response.json()
     assert result["message"] == "Project deleted successfully"
 
 
-def test_delete_project_unexpected_error(monkeypatch):
+def test_delete_project_unexpected_error():
     """Tests that unexpected errors in delete_project are handled properly."""
     # Mock store.delete_project to raise an unexpected exception
     original_delete = store.delete_project
-    
-    def mock_delete_project(project_id):
-        raise RuntimeError("Unexpected database error")
-    
+
+    def mock_delete_project(project_id):  # noqa: ARG001
+        raise DatabaseError
+
     store.delete_project = mock_delete_project
-    
+
     try:
         response = client.delete("/projects/1")
         assert response.status_code == HTTP_500_INTERNAL_SERVER_ERROR
@@ -482,19 +486,19 @@ def test_update_project_unexpected_error(monkeypatch):
     # Mock the dependency extractor
     mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
     monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
-    
+
     mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_query = AsyncMock(return_value=mock_osv_response)
     monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
-    
+
     # Mock store.update_project to raise an unexpected exception
     original_update = store.update_project
-    
-    def mock_update_project(project_id, name=None, description=None):
-        raise RuntimeError("Unexpected database error")
-    
+
+    def mock_update_project(project_id, name=None, description=None):  # noqa: ARG001
+        raise DatabaseError
+
     store.update_project = mock_update_project
-    
+
     try:
         response = client.put(
             "/projects/1",
@@ -514,19 +518,19 @@ def test_create_project_unexpected_error(monkeypatch):
     # Mock the dependency extractor
     mock_extractor = AsyncMock(return_value="requests==2.28.1\n")
     monkeypatch.setattr("app.routers.projects.extract_all_dependencies", mock_extractor)
-    
+
     mock_osv_response = OSVBatchResponse(results=[QueryVulnerabilities(vulns=[])])
     mock_query = AsyncMock(return_value=mock_osv_response)
     monkeypatch.setattr("app.routers.projects.query_osv_batch", mock_query)
-    
+
     # Mock store.add_project to raise an unexpected exception
     original_add = store.add_project
-    
-    def mock_add_project(name, description=None):
-        raise RuntimeError("Unexpected database error")
-    
+
+    def mock_add_project(name, description=None):  # noqa: ARG001
+        raise DatabaseError
+
     store.add_project = mock_add_project
-    
+
     try:
         response = client.post(
             "/projects/",
