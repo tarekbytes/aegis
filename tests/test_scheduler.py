@@ -110,6 +110,31 @@ async def test_scheduled_vulnerability_scan(mock_cache):
                 "missing-dep", "1.0.0", is_vulnerable=False, vulnerability_ids=[]
             )
 
+            # Verify cache was updated for the scanned dependencies
+            stale_cache_entry = await mock_cache.get("stale-dep@1.0.0")
+            missing_cache_entry = await mock_cache.get("missing-dep@1.0.0")
+            fresh_cache_entry = await mock_cache.get("fresh-dep@1.0.0")
+
+            assert stale_cache_entry is not None
+            assert stale_cache_entry.status == "ready"
+            assert stale_cache_entry.expiry_timestamp > time.time()
+            assert (
+                stale_cache_entry.data.vulns is not None
+                and len(stale_cache_entry.data.vulns) == 1
+            )
+
+            assert missing_cache_entry is not None
+            assert missing_cache_entry.status == "ready"
+            assert missing_cache_entry.expiry_timestamp > time.time()
+            assert not (
+                missing_cache_entry.data.vulns is not None
+                and len(missing_cache_entry.data.vulns) > 0
+            )
+
+            # Verify fresh entry was not touched (its expiry is the same)
+            assert fresh_cache_entry is not None
+            assert fresh_cache_entry.expiry_timestamp == fresh_entry.expiry_timestamp
+
 
 @pytest.mark.asyncio
 async def test_scheduled_vulnerability_scan_no_stale_deps(mock_cache):
