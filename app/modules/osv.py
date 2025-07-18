@@ -1,18 +1,20 @@
-import httpx
-from typing import List, Dict, Any
 import time
+from typing import Any, Dict, List
+
+import httpx
 from packaging.requirements import Requirement
+
 from app.models import OSVBatchResponse, OSVVulnerability, QueryVulnerabilities
-from app.services.cache import cache, CacheEntry
+from app.services.cache import CacheEntry, cache
 
 OSV_API_URL = "https://api.osv.dev/v1/querybatch"
 
 # TTLs in seconds
-TTL_NONE = 86400      # 24h for no vulns or LOW
+TTL_NONE = 86400  # 24h for no vulns or LOW
 TTL_MODERATE = 43200  # 12h
-TTL_HIGH = 14400      # 4h
-TTL_CRITICAL = 3600   # 1h
-TTL_DEFAULT = 3600    # 1h fallback
+TTL_HIGH = 14400  # 4h
+TTL_CRITICAL = 3600  # 1h
+TTL_DEFAULT = 3600  # 1h fallback
 
 SEVERITY_ORDER = ["CRITICAL", "HIGH", "MODERATE", "LOW"]
 SEVERITY_TTL = {
@@ -22,6 +24,7 @@ SEVERITY_TTL = {
     "LOW": TTL_NONE,
 }
 
+
 def _extract_highest_severity(vulns: List[OSVVulnerability]) -> str:
     highest = None
     for vuln in vulns:
@@ -29,7 +32,9 @@ def _extract_highest_severity(vulns: List[OSVVulnerability]) -> str:
         if vuln.severity:
             for sev in vuln.severity:
                 sev_type = sev.type.upper()
-                if highest is None or SEVERITY_ORDER.index(sev_type) < SEVERITY_ORDER.index(highest):
+                if highest is None or SEVERITY_ORDER.index(
+                    sev_type
+                ) < SEVERITY_ORDER.index(highest):
                     highest = sev_type
         # Check affected-level severity
         if vuln.affected:
@@ -37,15 +42,19 @@ def _extract_highest_severity(vulns: List[OSVVulnerability]) -> str:
                 if aff.severity:
                     for sev in aff.severity:
                         sev_type = sev.type.upper()
-                        if highest is None or SEVERITY_ORDER.index(sev_type) < SEVERITY_ORDER.index(highest):
+                        if highest is None or SEVERITY_ORDER.index(
+                            sev_type
+                        ) < SEVERITY_ORDER.index(highest):
                             highest = sev_type
     return highest or "LOW"
+
 
 def _calculate_ttl(vulns: List[OSVVulnerability]) -> int:
     if not vulns:
         return TTL_NONE
     highest = _extract_highest_severity(vulns)
     return SEVERITY_TTL.get(highest, TTL_DEFAULT)
+
 
 async def query_osv_batch(requirements: List[Requirement]) -> OSVBatchResponse:
     dep_keys = []
@@ -65,20 +74,22 @@ async def query_osv_batch(requirements: List[Requirement]) -> OSVBatchResponse:
     for key in dep_keys:
         entry = await cache.get(key)
         if entry is None:
-            added = await cache.add_if_not_exists(key, CacheEntry(status='fetching'))
+            added = await cache.add_if_not_exists(key, CacheEntry(status="fetching"))
             if added:
                 to_fetch.append(key)
             else:
                 waiters.append(key)
-        elif entry.status == 'ready':
+        elif entry.status == "ready":
             if entry.expiry_timestamp and entry.expiry_timestamp > now:
                 results[key] = entry.data
             else:
                 results[key] = entry.data
-                added = await cache.add_if_not_exists(key + ':refresh', CacheEntry(status='fetching'))
+                added = await cache.add_if_not_exists(
+                    key + ":refresh", CacheEntry(status="fetching")
+                )
                 if added:
                     to_fetch.append(key)
-        elif entry.status == 'fetching':
+        elif entry.status == "fetching":
             waiters.append(key)
 
     # Phase 2: Fetch from OSV for to_fetch
@@ -98,13 +109,11 @@ async def query_osv_batch(requirements: List[Requirement]) -> OSVBatchResponse:
             vulns = res.vulns or []
             ttl = _calculate_ttl(vulns)
             expiry = time.time() + ttl
-            await cache.set(key, CacheEntry(status='ready', data=res, expiry_timestamp=expiry))
+            await cache.set(
+                key, CacheEntry(status="ready", data=res, expiry_timestamp=expiry)
+            )
             # Clear the refresh entry
-            await cache._lock.acquire()
-            try:
-                cache._store.pop(key + ':refresh', None)
-            finally:
-                cache._lock.release()
+            await cache.pop(key + ":refresh", None)
             results[key] = res
 
     # Phase 3: Wait for in-flight fetches
