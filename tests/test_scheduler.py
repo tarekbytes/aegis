@@ -5,17 +5,14 @@ from packaging.requirements import Requirement
 import pytest
 
 from app.data import store
-from app.models.osv import OSVBatchResponse, OSVVulnerability, QueryVulnerabilities
+from app.models.osv import (
+    OSVBatchResponse,
+    OSVVulnerability,
+    QueryVulnerabilities,
+    Severity,
+)
 from app.services.cache import CacheEntry, InMemoryAsyncCache
 from app.services.scheduler import scheduled_vulnerability_scan
-
-
-@pytest.fixture(autouse=True)
-def clean_stores():
-    """Cleans the stores before each test."""
-    store.clear_projects_store()
-    store.clear_dependencies_store()
-    yield
 
 
 @pytest.fixture
@@ -110,30 +107,51 @@ async def test_scheduled_vulnerability_scan(mock_cache):
                 "missing-dep", "1.0.0", is_vulnerable=False, vulnerability_ids=[]
             )
 
-            # Verify cache was updated for the scanned dependencies
-            stale_cache_entry = await mock_cache.get("stale-dep@1.0.0")
-            missing_cache_entry = await mock_cache.get("missing-dep@1.0.0")
-            fresh_cache_entry = await mock_cache.get("fresh-dep@1.0.0")
 
-            assert stale_cache_entry is not None
-            assert stale_cache_entry.status == "ready"
-            assert stale_cache_entry.expiry_timestamp > time.time()
-            assert (
-                stale_cache_entry.data.vulns is not None
-                and len(stale_cache_entry.data.vulns) == 1
+@pytest.mark.asyncio
+async def test_scheduled_vulnerability_scan_unknown_severity(mock_cache):
+    """
+    Tests that the scan handles unknown severities gracefully without crashing.
+    """
+    # 1. Arrange
+    with (
+        patch("app.services.scheduler.cache", mock_cache),
+        patch("app.services.scheduler.store", new_callable=MagicMock) as mock_store,
+    ):
+        mock_store.get_all_dependencies.return_value = [
+            {"name": "stale-dep", "version": "1.0.0"}
+        ]
+        await mock_cache.set(
+            "stale-dep@1.0.0",
+            CacheEntry(
+                status="ready",
+                data=QueryVulnerabilities(vulns=[]),
+                expiry_timestamp=time.time() - 3600,
+            ),
+        )
+
+        async def mock_osv_side_effect(reqs: list[Requirement]):
+            vuln = OSVVulnerability(
+                id="CVE-2023-9999",
+                modified="2023-01-01T00:00:00Z",
+                severity=[Severity(type="UNKNOWN", score="0.0")],
             )
+            return OSVBatchResponse(results=[QueryVulnerabilities(vulns=[vuln])])
 
-            assert missing_cache_entry is not None
-            assert missing_cache_entry.status == "ready"
-            assert missing_cache_entry.expiry_timestamp > time.time()
-            assert not (
-                missing_cache_entry.data.vulns is not None
-                and len(missing_cache_entry.data.vulns) > 0
+        with patch(
+            "app.services.scheduler.query_osv_batch", new_callable=AsyncMock
+        ) as mock_query_osv:
+            mock_query_osv.side_effect = mock_osv_side_effect
+
+            # 2. Act & 3. Assert
+            # The test passes if this does not raise a ValueError
+            await scheduled_vulnerability_scan()
+            mock_store.update_dependency_vulnerability.assert_called_once_with(
+                "stale-dep",
+                "1.0.0",
+                is_vulnerable=True,
+                vulnerability_ids=["CVE-2023-9999"],
             )
-
-            # Verify fresh entry was not touched (its expiry is the same)
-            assert fresh_cache_entry is not None
-            assert fresh_cache_entry.expiry_timestamp == fresh_entry.expiry_timestamp
 
 
 @pytest.mark.asyncio

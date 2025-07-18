@@ -5,6 +5,7 @@ import httpx
 from packaging.requirements import Requirement
 
 from app.models import OSVBatchResponse, OSVVulnerability, QueryVulnerabilities
+from app.models.osv import Severity
 from app.services.cache import CacheEntry, cache
 
 OSV_API_URL = "https://api.osv.dev/v1/querybatch"
@@ -25,27 +26,32 @@ SEVERITY_TTL = {
 }
 
 
+def _get_highest_severity_from_list(
+    severities: List[Severity], current_highest: str | None
+) -> str | None:
+    """Finds the highest severity from a list of severities."""
+    highest = current_highest
+    for sev in severities:
+        sev_type = sev.type.upper()
+        if sev_type in SEVERITY_ORDER and (
+            highest is None
+            or SEVERITY_ORDER.index(sev_type) < SEVERITY_ORDER.index(highest)
+        ):
+            highest = sev_type
+    return highest
+
+
 def _extract_highest_severity(vulns: List[OSVVulnerability]) -> str:
-    highest = None
+    highest: str | None = None
     for vuln in vulns:
         # Check top-level severity
         if vuln.severity:
-            for sev in vuln.severity:
-                sev_type = sev.type.upper()
-                if highest is None or SEVERITY_ORDER.index(
-                    sev_type
-                ) < SEVERITY_ORDER.index(highest):
-                    highest = sev_type
+            highest = _get_highest_severity_from_list(vuln.severity, highest)
         # Check affected-level severity
         if vuln.affected:
             for aff in vuln.affected:
                 if aff.severity:
-                    for sev in aff.severity:
-                        sev_type = sev.type.upper()
-                        if highest is None or SEVERITY_ORDER.index(
-                            sev_type
-                        ) < SEVERITY_ORDER.index(highest):
-                            highest = sev_type
+                    highest = _get_highest_severity_from_list(aff.severity, highest)
     return highest or "LOW"
 
 
