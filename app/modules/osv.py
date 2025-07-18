@@ -1,9 +1,11 @@
-import httpx
-from typing import List, Dict, Any
 import time
+from typing import Any, Dict, List
+
+import httpx
 from packaging.requirements import Requirement
+
 from app.models import OSVBatchResponse, OSVVulnerability, QueryVulnerabilities
-from app.services.cache import cache, CacheEntry
+from app.services.cache import CacheEntry, cache
 
 OSV_API_URL = "https://api.osv.dev/v1/querybatch"
 
@@ -65,20 +67,20 @@ async def query_osv_batch(requirements: List[Requirement]) -> OSVBatchResponse:
     for key in dep_keys:
         entry = await cache.get(key)
         if entry is None:
-            added = await cache.add_if_not_exists(key, CacheEntry(status='fetching'))
+            added = await cache.add_if_not_exists(key, CacheEntry(status="fetching"))
             if added:
                 to_fetch.append(key)
             else:
                 waiters.append(key)
-        elif entry.status == 'ready':
+        elif entry.status == "ready":
             if entry.expiry_timestamp and entry.expiry_timestamp > now:
                 results[key] = entry.data
             else:
                 results[key] = entry.data
-                added = await cache.add_if_not_exists(key + ':refresh', CacheEntry(status='fetching'))
+                added = await cache.add_if_not_exists(key + ":refresh", CacheEntry(status="fetching"))
                 if added:
                     to_fetch.append(key)
-        elif entry.status == 'fetching':
+        elif entry.status == "fetching":
             waiters.append(key)
 
     # Phase 2: Fetch from OSV for to_fetch
@@ -98,13 +100,9 @@ async def query_osv_batch(requirements: List[Requirement]) -> OSVBatchResponse:
             vulns = res.vulns or []
             ttl = _calculate_ttl(vulns)
             expiry = time.time() + ttl
-            await cache.set(key, CacheEntry(status='ready', data=res, expiry_timestamp=expiry))
+            await cache.set(key, CacheEntry(status="ready", data=res, expiry_timestamp=expiry))
             # Clear the refresh entry
-            await cache._lock.acquire()
-            try:
-                cache._store.pop(key + ':refresh', None)
-            finally:
-                cache._lock.release()
+            await cache.pop(key + ":refresh")
             results[key] = res
 
     # Phase 3: Wait for in-flight fetches
