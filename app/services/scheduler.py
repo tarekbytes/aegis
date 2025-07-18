@@ -1,6 +1,5 @@
 import logging
-import time
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Dict, Set, Tuple
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from packaging.requirements import Requirement
@@ -16,7 +15,6 @@ from app.modules.osv import (
     TTL_NONE,
     query_osv_batch,
 )
-from app.services.cache import CacheEntry, cache
 
 if TYPE_CHECKING:
     pass
@@ -59,57 +57,42 @@ def _calculate_ttl(vulns: List[OSVVulnerability]) -> int:
 
 async def scheduled_vulnerability_scan():
     """
-    Periodically scans all unique dependencies in the store, checks for stale
-    cache entries, and re-queries OSV for the latest vulnerability data.
+    Periodically queries all unique dependencies in the store against OSV.
+    The OSV module itself handles caching, so this scheduler simply acts
+    as a periodic trigger to refresh the data.
     """
-    # 1. Get all unique dependencies in use (name and version)
-    all_deps = store.get_all_dependencies()
-    unique_deps = {(dep["name"], dep["version"]) for dep in all_deps}
-
-    # 2. Filter for stale cache entries
-    stale_deps_reqs: list[Requirement] = []
-    for name, version in unique_deps:
-        cache_key = f"{name.lower()}@{version}"
-        entry = await cache.get(cache_key)
-        # Check if entry is missing or expired
-        if not entry or (
-            entry.expiry_timestamp and time.time() > entry.expiry_timestamp
-        ):
-            stale_deps_reqs.append(Requirement(f"{name}=={version}"))
-
-    if not stale_deps_reqs:
-        logger.info("No stale dependencies to scan.")
+    logger.info("Starting scheduled vulnerability scan for all dependencies.")
+    all_deps: List[Dict[str, str]] = store.get_all_dependencies()
+    if not all_deps:
+        logger.info("No dependencies in the store to scan.")
         return
 
-    logger.info(f"Found {len(stale_deps_reqs)} stale dependencies to scan.")
-    # 3. Batch query osv.dev for stale dependencies
-    osv_results: OSVBatchResponse = await query_osv_batch(stale_deps_reqs)
+    unique_deps: Set[Tuple[str, str]] = {
+        (dep["name"], dep["version"]) for dep in all_deps
+    }
+    unique_deps_reqs = [
+        Requirement(f"{name}=={version}") for name, version in unique_deps
+    ]
 
-    # 4. Update cache and store for each result
-    for req, query_vulns in zip(stale_deps_reqs, osv_results.results):
+    if not unique_deps_reqs:
+        logger.info("No unique dependencies found to scan.")
+        return
+
+    logger.info(f"Querying OSV for {len(unique_deps_reqs)} unique dependencies.")
+    osv_results: OSVBatchResponse = await query_osv_batch(unique_deps_reqs)
+
+    # Update the store with the latest results
+    for req, query_vulns in zip(unique_deps_reqs, osv_results.results):
         version = str(next(iter(req.specifier)).version)
         name = req.name.lower()
-        cache_key = f"{name}@{version}"
 
         has_vulns = query_vulns.vulns is not None and len(query_vulns.vulns) > 0
         vuln_ids = [v.id for v in query_vulns.vulns] if has_vulns else []
 
-        # Update cache with new data and expiry
-        ttl = _calculate_ttl(query_vulns.vulns or [])
-        new_entry = CacheEntry(
-            status="ready", data=query_vulns, expiry_timestamp=time.time() + ttl
-        )
-        await cache.set(cache_key, new_entry)
-        logger.info(f"Updated cache for {name}=={version} (TTL: {ttl} seconds)")
-
-        # Update dependency records in the store
         store.update_dependency_vulnerability(
             name, version, is_vulnerable=has_vulns, vulnerability_ids=vuln_ids
         )
-        if has_vulns:
-            logger.info(
-                f"Found {len(vuln_ids)} vulnerabilities for {name}=={version}. Updated store."
-            )
+    logger.info("Scheduled vulnerability scan finished.")
 
 
 def start():
